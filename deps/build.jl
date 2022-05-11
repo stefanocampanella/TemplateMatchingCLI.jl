@@ -1,0 +1,3 @@
+using TemplateMatchingCLI
+
+TemplateMatchingCLI.comonicon_install()

@@ -3,6 +3,17 @@ uuid = "4afe5421-88a9-4a08-b622-ce50c7f41406"
 authors = ["Stefano Campanella <15182642+stefanocampanella@users.noreply.github.com> and contributors"]
 version = "0.1.0"
 
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+Comonicon = "863f3e99-da2a-4334-8734-de3dacbe5542"
+DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+TemplateMatching = "8a5bafa5-7804-46e7-8ed3-a510d2efa4f5"
+
 [compat]
 julia = "1.7"
 
