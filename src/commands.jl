@@ -107,7 +107,7 @@ Cut templates.
         next!(progressbar)
     end
     @info "Saving templates"
-    catalogue.templates_data = templates_data
+    catalogue.data = templates_data
     catalogue.offsets = templates_offsets
     jldsave(joinpath(outputpath, "$experiment.jld2"); catalogue, speed, window)
 end
@@ -144,9 +144,9 @@ match templates.
     @info "Computing crosscorrelations..."
     progressbar = Progress(nrow(catalogue); output=stderr, enabled=!is_logging(stderr))
     Threads.@threads for template in eachrow(catalogue)
-        channels = collect(intersect(keys(template.templates_data), keys(template.offsets), keys(sensorscoordinates)))
+        channels = collect(intersect(keys(template.data), keys(template.offsets), keys(sensorscoordinates)))
         data_vec = [data[ch] for ch in channels]
-        template_vec = [template.templates_data[ch] for ch in channels]
+        template_vec = [template.data[ch] for ch in channels]
         offsets_vec = [template.offsets[ch] for ch in channels]
         crosscorrelation = correlatetemplate(data_vec, 
                                              template_vec, 
