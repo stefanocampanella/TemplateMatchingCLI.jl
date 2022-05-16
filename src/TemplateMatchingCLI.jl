@@ -11,6 +11,7 @@ using JLD2
 using DataFrames
 using Comonicon
 
+include("types.jl")
 include("datetimeus.jl")
 include("readers.jl")
 include("utils.jl")

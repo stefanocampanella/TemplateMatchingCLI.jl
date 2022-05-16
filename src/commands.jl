@@ -26,39 +26,34 @@ all in the same directory `inputdirpath`.
                           numpoles::Int=4, resamplefactor::Int=5, 
                           exclude::AbstractString="")
     bad_channels = isempty(exclude) ? [] : map(s -> parse(Int, s), split(exclude, ","))
-    if precision == 16
-        eltype = Float16
-    elseif precision == 32
-        eltype = Float32
-    elseif precision == 64
-        eltype = Float64
-    else
-        throw(ArgumentError("Precision not supported"))
-    end
     @info "Reading files from $dirpath (experiment: $experiment, time: $datetime)..."
-    data = readlabdir(dirpath, datetime, experiment, bad_channels, typemax(Int), eltype)
-    responsetype = Bandpass(lopassfreq, hipassfreq, fs=freq)
-    designmethod = Butterworth(numpoles)
-    progressbar = Progress(length(data); output=stderr, enabled=!is_logging(stderr))
-    @info "Pre-processing data..."
-    Threads.@threads for n in collect(keys(data))
-        if n ∉ bad_channels
-            ys = data[n]
-            xs = axes(data[n], 1)
-            beta = (mean(xs .* ys) - mean(xs) * mean(ys)) / std(xs, corrected=false)
-            alpha = mean(ys) - beta * mean(xs)
-            ys_detrended = @. ys - alpha - beta * xs
-            ys_filtered = filtfilt(digitalfilter(responsetype, designmethod), ys_detrended)
-            ys_resampled = resample(ys_filtered, 1 //resamplefactor)
-            data[n] = ys_resampled
-            next!(progressbar)
+    data = readlabdir(dirpath, datetime, experiment, bad_channels, typemax(Int), fptype(precision))
+    if isempty(data)
+        @warn "No data found"
+    else
+        responsetype = Bandpass(lopassfreq, hipassfreq, fs=freq)
+        designmethod = Butterworth(numpoles)
+        progressbar = Progress(length(data); output=stderr, enabled=!is_logging(stderr))
+        @info "Pre-processing data..."
+        Threads.@threads for n in collect(keys(data))
+            if n ∉ bad_channels
+                ys = data[n]
+                xs = axes(data[n], 1)
+                beta = (mean(xs .* ys) - mean(xs) * mean(ys)) / std(xs, corrected=false)
+                alpha = mean(ys) - beta * mean(xs)
+                ys_detrended = @. ys - alpha - beta * xs
+                ys_filtered = filtfilt(digitalfilter(responsetype, designmethod), ys_detrended)
+                ys_resampled = resample(ys_filtered, 1 //resamplefactor)
+                data[n] = ys_resampled
+                next!(progressbar)
+            end
         end
+        @info "Saving data..."
+        starttime = DateTime(datetime, dateformat"yyyy-mm-dd_HH-MM-SS")
+        resampledfreq = freq // resamplefactor
+        endtime = starttime + Second(round(Int, minimum(length, values(data)) / resampledfreq))
+        jldsave(joinpath(outputpath, "$(datetime)_$experiment.jld2"); data, starttime, endtime, freq=resampledfreq)
     end
-    @info "Saving data..."
-    starttime = DateTime(datetime, dateformat"yyyy-mm-dd_HH-MM-SS")
-    newfreq = freq // resamplefactor
-    endtime = starttime + Second(round(Int, minimum(length, values(data)) / newfreq))
-    jldsave(joinpath(outputpath, "$(datetime)_$experiment.jld2"); data, starttime, endtime, freq=newfreq)
 end
 
 
@@ -67,36 +62,98 @@ Cut templates.
 
 # Arguments
 
-- `datapath`: path of JLD2 data file.
+- `datadirpath`: path of the directory of JLD2 data files.
 - `sensorsxyzpath`: path of the CSV containing sensors coordinates.
-- `cataloguepath`: 
-- `datetime`: datetime of data to be read.
-- `outputdirpath`: path of the directory where to output template files.
+- `cataloguepath`: path of the CSV catalogue of templates.
+- `experiment`: name of the experiment of which load the data.
+- `outputpath`: path of the output file.
 
 # Options
 
-- `-f, --freq`: original sampling frequency.
+- `-p, --precision`: FP precision to use for template storage.
+- `-s, --speed`: P-wave speed in cm/us.
 - `-w, --window`: template window in samples.
 """
-@cast function maketemplates(datapath, sensorsxyzpath, cataloguepath, outputdirpath; 
-                             v_p=0.67, window=(100, 500))
-    @info "Loading data..."
-    dataset = load(datapath)
-    data = sort(dataset["data"])
-    channels = keys(data)
-    data_stream = values(data) 
-    @info "Reading sensors coordinates..."
-    sensorscoordinates = readsensorscoordinates(sensorsxyzpath, channels)
+@cast function maketemplates(datadirpath, experiment, sensorsxyzpath, cataloguepath, outputpath; 
+                             precision=32, speed=0.67, window=(100, 500))
     @info "Reading catalogue..."
-    starttime = dataset["starttime"]
-    endtime = dataset["endtime"]
-    freq = dataset["freq"]
-    catalogue = readcatalogue(cataloguepath, round(Int, 1e-6 * freq), starttime, endtime)
-    @info "Cutting and saving templates..."
-    progressbar = Progress(length(data); output=stderr, enabled=!is_logging(stderr))
-    for template in eachrow(catalogue)
-        template_data = cuttemplate(data_stream, sensorscoordinates, template, round(Int, 1e-6 * freq), v_p, window)
-        jldsave(joinpath(outputdirpath, "$(template.index).jld2"); template_data, template)
+    catalogue = readcatalogue(cataloguepath)
+    @info "Reading sensors coordinates..."
+    sensorscoordinates = readsensorscoordinates(sensorsxyzpath)
+    @info "Reading data and cutting templates..."
+    re = Regex("\\Q$experiment\\E.jld2\$")
+    eltype = fptype(precision)
+    templates_data = Vector{MaybeTemplateData{eltype}}(missing, nrow(catalogue))
+    templates_offsets = Vector{MaybeTemplateOffsets}(missing, nrow(catalogue))
+    datapaths = collect(readdir(datadirpath, join=true))
+    progressbar = Progress(length(datapaths); output=stderr, enabled=!is_logging(stderr))
+    Threads.@threads for datapath in datapaths
+        if !isnothing(match(re, datapath))
+            data = load(datapath)
+            data = dataset["data"]
+            starttime_us = DateTimeMicrosecond(dataset["starttime"])
+            endtime_us = DateTimeMicrosecond(dataset["endtime"])
+            freq_MHz = round(Int, 1e-6 * dataset["freq"])
+            templates_within_data = filter(r -> starttime_us <= r.datetime < endtime_us, catalogue)
+            for template in eachrow(templates_within_data)
+                template_data, offsets = cuttemplate(data,
+                                                     sensorscoordinates,
+                                                     template,
+                                                     starttime_us, freq_MHz, speed, window, eltype)
+                templates_data[template.index] = template_data
+                templates_offsets[template.index] = offsets
+            end
+        end
+        next!(progressbar)
+    end
+    @info "Saving templates"
+    catalogue.templates_data = templates_data
+    catalogue.offsets = templates_offsets
+    jldsave(joinpath(outputpath, "$experiment.jld2"); catalogue, speed, window)
+end
+
+
+
+"""
+match templates.
+
+# Arguments
+
+- `datapath`: path of continuous data.
+- `templatespath`: path of the directory of JLD2 data files.
+- `sensorsxyzpath`: path of the CSV containing sensors coordinates.
+- `outputpath`: path of the output file.
+
+# Options
+
+- `-p, --precision`: FP precision to use for computing crosscorrelations.
+- `-t, --tolerance`: sample tolerance in stacking.
+- `-h, --heightthreshold`: height threshold.
+- `-d, --distance`: minimum distance between peaks.
+- `-c, --correlationthreshold`: correlation threshold.
+- `-n, --nchmin`: minimum number of channels.
+"""
+@cast function matchtemplates(datapath, templatespath, sensorsxyzpath; heightthreshold=0.4, distance=2, correlationthreshold=0.5, tolerance=5, nchmin=4)
+    @info "Reading data..."
+    data = load(datapath, "data")
+    @info "Reading sensors coordinates..."
+    sensorscoordinates = readsensorscoordinates(sensorsxyzpath)
+    @info "Reading templates..."
+    catalogue = load(templatespath, "catalogue")
+    filter!(r -> !any(map(ismissing, r)), catalogue)
+    @info "Computing crosscorrelations..."
+    progressbar = Progress(nrow(catalogue); output=stderr, enabled=!is_logging(stderr))
+    Threads.@threads for template in eachrow(catalogue)
+        channels = collect(intersect(keys(template.templates_data), keys(template.offsets), keys(sensorscoordinates)))
+        data_vec = [data[ch] for ch in channels]
+        template_vec = [template.templates_data[ch] for ch in channels]
+        offsets_vec = [template.offsets[ch] for ch in channels]
+        crosscorrelation = correlatetemplate(data_vec, 
+                                             template_vec, 
+                                             offsets_vec, 
+                                             tolerance)
+        peaks, _ = findpeaks(crosscorrelation, heightthreshold, distance * maximum(length, template_vec))
+        @info "Found $(length(peaks)) peaks for template $(template.index)! Done."
         next!(progressbar)
     end
 end

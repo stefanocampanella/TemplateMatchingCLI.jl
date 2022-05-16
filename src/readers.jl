@@ -6,11 +6,11 @@ end
 
 
 function readlabdir(dirpath, datetime, experiment, exclude_list, nb, eltype::Type{T}) where T <: AbstractFloat
-    re = Regex("\\Q$datetime\\E_\\Q$experiment\\E_ch(?P<fst_channel>[0-9]+)&(?P<snd_channel>[0-9]+)\\.bin")
-    data = Dict{Int, Vector{eltype}}()
+    re = Regex("^\\Q$datetime\\E_\\Q$experiment\\E_ch(?P<fst_channel>[0-9]+)&(?P<snd_channel>[0-9]+)\\.bin")
+    data = Stream{eltype}()
     for filepath in readdir(dirpath, join=true)
         m = match(re, basename(filepath))
-        if m !== nothing
+        if !isnothing(m) 
             fst_channel, snd_channel = map(s -> parse(Int, m[s]), [:fst_channel, :snd_channel])
             if fst_channel ∉ exclude_list || snd_channel ∉ exclude_list
                 fst_channel_data, snd_channel_data = readlabfile(filepath, nb, eltype)
@@ -23,34 +23,36 @@ function readlabdir(dirpath, datetime, experiment, exclude_list, nb, eltype::Typ
             end
         end
     end
+    if !isempty(data)
+        max_len = maximum(length, values(data))
+        for (channel, trace) in data
+            trace_len = length(trace)
+            if trace_len < max_len
+                data[channel] = [trace; zeros(max_len - trace_len)]
+            end
+        end
+    end
     data
 end
 
 
-function readcatalogue(filepath, samplefreq, starttime, endtime; 
-                       columns = [:Year, :Month, :Day, :Hour, :Minute, :Second, :North, :East, :Up, :magnitude])
+function readcatalogue(filepath, columns = [:Year, :Month, :Day, :Hour, :Minute, :Second, :North, :East, :Up, :magnitude])
     df = CSV.read(filepath, DataFrame, select=columns)
     sec = floor.(Int, df.Second)
     usec = round.(Int, 1e6 * (df.Second - sec))
     catalogue = DataFrame()
-    starttime_us = DateTimeMicrosecond(starttime)
-    endtime_us = DateTimeMicrosecond(endtime)
-    df.datetime = DateTimeMicrosecond.(df.Year, df.Month, df.Day, df.Hour, df.Minute, sec, usec)
-    df.index = axes(df, 1)
-    df = df[(@. starttime_us <= df.datetime < endtime_us), :]
-    catalogue.sample = map(x -> round(Int, x.value * samplefreq), df.datetime .- starttime_us)
+    catalogue.datetime = DateTimeMicrosecond.(df.Year, df.Month, df.Day, df.Hour, df.Minute, sec, usec)
+    catalogue.index = 1:nrow(df)
     catalogue.north = df.North
     catalogue.east = df.East
     catalogue.up = df.Up
-    catalogue.index = df.index
     catalogue
 end
 
 
-function readsensorscoordinates(filepath, channels; header=[:north, :east, :up])
+function readsensorscoordinates(filepath; header=[:north, :east, :up])
     coordinates = CSV.read(filepath, DataFrame; header)
-    coordinates.sensor = axes(coordinates, 1) .- 1
-    filter!(r -> r.sensor in channels, coordinates)
-    coordinates
+    coordinates.channel = 0:(nrow(coordinates) - 1)
+    Dict(r.channel => Vector(r[[:north, :east, :up]]) for r in eachrow(coordinates))
 end
 

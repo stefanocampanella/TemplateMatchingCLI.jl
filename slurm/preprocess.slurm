@@ -17,7 +17,7 @@ SOURCE_DIR=$DATA_ROOT/data
 export JULIA_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export PATH=$PATH:~/.julia/bin
 
-mapfile -t DATETIMES < <(find "$RAW_DIR" -type f -name "*.bin" -printf '%f\n' | sed -rn 's/(^[0-9\-]+_[0-9\-]+)_gab6_ch[0-9]+&[0-9]+.bin/\1/p' | sort -nu)
+mapfile -t DATETIMES < <(find "$RAW_DIR" -type f -name "*.bin" -printf '%f\n' | sed -rn 's/(^[0-9\-]+_[0-9\-]+)_gab6_ch[0-9]+&[0-9]+.bin/\1/p' | sort -u)
 DATETIME="${DATETIMES[SLURM_ARRAY_TASK_ID]}"
 templatematchingcli preprocess "$RAW_DIR" "$DATETIME" gab6 "$SOURCE_DIR" --exclude=1,2,3
 
