@@ -89,7 +89,7 @@ Cut templates.
     progressbar = Progress(length(datapaths); output=stderr, enabled=!is_logging(stderr))
     Threads.@threads for datapath in datapaths
         if !isnothing(match(re, datapath))
-            data = load(datapath)
+            dataset = load(datapath)
             data = dataset["data"]
             starttime_us = DateTimeMicrosecond(dataset["starttime"])
             endtime_us = DateTimeMicrosecond(dataset["endtime"])
