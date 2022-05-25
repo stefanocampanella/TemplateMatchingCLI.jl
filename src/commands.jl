@@ -133,27 +133,46 @@ match templates.
 - `-c, --correlationthreshold`: correlation threshold.
 - `-n, --nchmin`: minimum number of channels.
 """
-@cast function matchtemplates(datapath, templatespath, sensorsxyzpath; heightthreshold=0.4, distance=2, correlationthreshold=0.5, tolerance=5, nchmin=4)
+@cast function matchtemplates(datapath, templatespath, sensorspath, outputpath; 
+                              precision=32, heightthreshold=0.4, distance=2, 
+                              correlationthreshold=0.5, tolerance=5, nchmin=4)
     @info "Reading data..."
-    data = load(datapath, "data")
+    data, freq = load(datapath, "data", "freq")
     @info "Reading sensors coordinates..."
-    sensorscoordinates = readsensorscoordinates(sensorsxyzpath)
+    sensors = readsensorscoordinates(sensorspath)
     @info "Reading templates..."
-    catalogue = load(templatespath, "catalogue")
+    catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
+    delay, _  = window
     filter!(r -> !any(map(ismissing, r)), catalogue)
-    @info "Computing crosscorrelations..."
+    @info "Computing crosscorrelations and processing matches..."
     progressbar = Progress(nrow(catalogue); output=stderr, enabled=!is_logging(stderr))
-    Threads.@threads for template in eachrow(catalogue)
-        channels = collect(intersect(keys(template.data), keys(template.offsets), keys(sensorscoordinates)))
-        data_vec = [data[ch] for ch in channels]
-        template_vec = [template.data[ch] for ch in channels]
-        offsets_vec = [template.offsets[ch] for ch in channels]
-        crosscorrelation = correlatetemplate(data_vec, 
-                                             template_vec, 
-                                             offsets_vec, 
-                                             tolerance)
-        peaks, _ = findpeaks(crosscorrelation, heightthreshold, distance * maximum(length, template_vec))
-        @info "Found $(length(peaks)) peaks for template $(template.index)! Done."
+    matches_vec = Vector{DataFrame}(undef, nrow(catalogue))
+    templates = collect(Tables.namedtupleiterator(catalogue))
+    Threads.@threads for n in eachindex(templates)
+        template = templates[n]
+        crosscorrelation = correlate(data, template, tolerance, fptype(precision))
+        peaks, heights = TemplateMatching.findpeaks(crosscorrelation, heightthreshold, distance * (window[2] - window[1]))
+        matches = DataFrame()
+        matches.peak_sample = peaks .+ delay
+        matches.peak_height = heights
+        matches.template .= template.index
+        x0 = [template.north, template.east, template.up]
+        matches_data = [process_match(data, 
+                                      template, 
+                                      sensors,
+                                      [x0; (peak + delay) / freq],
+                                      freq,
+                                      delay,
+                                      speed,
+                                      tolerance,
+                                      correlationthreshold, 
+                                      nchmin) 
+                        for peak in peaks]
+        matches = hcat(matches, DataFrame(matches_data))
+        matches_vec[n] = matches
         next!(progressbar)
     end
+    augmented_catalogue = reduce(vcat, matches_vec)
+    filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * ".jld2"
+    jldsave(joinpath(outputpath, filename); augmented_catalogue)
 end

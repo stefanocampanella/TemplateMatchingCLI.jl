@@ -15,7 +15,10 @@ end
 is_logging(io) = isa(io, Base.TTY) == false || (get(ENV, "CI", nothing) == "true")
 
 
-zipdicts(dicts...) = Dict(key => tuple((d[key] for d in dicts)...) for key in intersect((keys(d) for d in dicts)...))
+zipdicts(dicts...) = Dict(key => tuple((d[key] for d in dicts)...) for key in intersectkeys(dicts...))
+
+
+intersectkeys(dicts...) = Base.splat(collect ∘ intersect)(map(keys, dicts)) 
 
 
 function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MHz, speed, window, eltype)
@@ -36,45 +39,40 @@ function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MH
 end
 
 
-function process_match(data_stream, template_stream, offsets_vec, guess, v_p, sensors_positions, correlation_threshold, nch_min)
-    toas = estimatetoa.(data_stream, template_stream, offsets_vec, tolerance)
-    readings = copy(sensors_positions)
-    readings.index = 1:nrow(readings)
-    readings.toas = [(sample + t_pre) / samplefreq for (sample, _) in toas]
-    readings.cc = [cc for (_, cc) in toas]
-    filter!(row -> row.cc > correlation_threshold, readings)
-    crosscorrelation = mean(readings.cc)
-    relative_magnitude = magnitude(data_stream[readings.index], template_stream[readings.index], offsets_vec[readings.index])
-    nch = nrow(readings)
-    if nch >= nch_min
-        readings_matrix = eachrow(Matrix(readings[!, [:north, :east, :up, :toas]]))
-        candidate = locate(readings_matrix, v_p, guess)
-        north, east, up, origin_time = candidate.minimizer
-        multilateration_residual = candidate.minimum
-    else
-        north, east, up, origin_time = guess
-        multilateration_residual = missing
-    end
-    (; north, east, up, origin_time, relative_magnitude, crosscorrelation, nch, multilateration_residual)
+function correlate(data, template, tolerance, element_type)
+    channels = intersectkeys(data, template.data, template.offsets)
+    data_vec = [data[ch] for ch in channels]
+    template_vec = [template.data[ch] for ch in channels]
+    offsets_vec = [template.offsets[ch] for ch in channels]
+    TemplateMatching.correlatetemplate(data_vec, template_vec, offsets_vec, tolerance, element_type)
 end
 
 
-function process_match(data_str, template_str, offsets_vec, guess, samplefreq, t_pre, v_p, sensors_positions, indx2ch, correlation_threshold, nch_min)
-    estimates = estimatetoa.(data_str, template_str, offsets_vec, tolerance)
-    toas = [(sample + t_pre) / samplefreq for (sample, _) in estimates]
-    ccs = [cc for (_, cc) in estimates]
-    indices = findall(>(correlation_threshold), ccs)
-    crosscorrelation = mean(readings[indices])
-    relative_magnitude = magnitude(data_str[indices], template_str[indices], offsets_vec[indices])
-    nch = len(indices)
-    if nch >= nch_min
-        readings = [[sensors_positions[indx2ch[n]]; toas[n]] for n in indices]
-        candidate = locate(readings, v_p, guess)
+function process_match(data, template, sensors, guess, freq, delay, speed, tolerance, cc_threshold, nch_threshold)
+    commonchannels = intersectkeys(data, template.data, template.offsets, sensors)
+    subsample_estimates = Dict(key => TemplateMatching.estimatetoa(data[key], 
+                                                                   template.data[key], 
+                                                                   round(Int, guess[4] .+ template.offsets[key]), 
+                                                                   tolerance) 
+                               for key in commonchannels)
+    filter!(p -> p.second[2] > cc_threshold, subsample_estimates)
+    validchannels = collect(keys(subsample_estimates))
+    if length(validchannels) >= nch_threshold
+        sensors_vec = [sensors[key] for key in validchannels]
+        toas = [(sample + delay) / freq for (sample, _) in values(subsample_estimates)]
+        candidate = TemplateMatching.locate(vcat.(sensors_vec, toas), speed, guess)
         north, east, up, origin_time = candidate.minimizer
         multilateration_residual = candidate.minimum
+        crosscorrelation = mean(cc for (_, cc) in values(subsample_estimates))
+        data_vec = [data[key] for key in validchannels]
+        template_vec = [template.data[key] for key in validchannels]
+        offsets_vec = [template.offsets[key] for key in validchannels]
+        relative_magnitude = TemplateMatching.magnitude(data_vec, template_vec, offsets_vec)
     else
         north, east, up, origin_time = guess
         multilateration_residual = missing
+        crosscorrelation = missing
+        relative_magnitude = missing
     end
-    (; north, east, up, origin_time, relative_magnitude, crosscorrelation, nch, multilateration_residual)
+    (; north, east, up, origin_time, magnitude=template.magnitude + relative_magnitude, crosscorrelation, validchannels, multilateration_residual)
 end

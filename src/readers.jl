@@ -46,6 +46,7 @@ function readcatalogue(filepath, columns = [:Year, :Month, :Day, :Hour, :Minute,
     catalogue.north = df.North
     catalogue.east = df.East
     catalogue.up = df.Up
+    catalogue.magnitude = df.magnitude
     catalogue
 end
 

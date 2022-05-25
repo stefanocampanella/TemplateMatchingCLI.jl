@@ -1,6 +1,6 @@
 module TemplateMatchingCLI
 
-using TemplateMatching
+import TemplateMatching
 using Dates
 using CSV
 using DataFrames
@@ -9,6 +9,7 @@ using ProgressMeter
 using DSP
 using JLD2
 using DataFrames
+using Tables
 using Comonicon
 
 include("types.jl")
