@@ -132,22 +132,25 @@ match templates.
 - `-d, --distance`: minimum distance between peaks.
 - `-c, --correlationthreshold`: correlation threshold.
 - `-n, --nchmin`: minimum number of channels.
+- `-b, --batches`: batch to process.
 """
 @cast function matchtemplates(datapath, templatespath, sensorspath, outputpath; 
                               precision=32, heightthreshold=0.4, distance=2, 
-                              correlationthreshold=0.5, tolerance=5, nchmin=4)
+                              correlationthreshold=0.5, tolerance=5, nchmin=4,
+                              batches="1/1")
     @info "Reading data..."
     data, freq = load(datapath, "data", "freq")
     @info "Reading sensors coordinates..."
     sensors = readsensorscoordinates(sensorspath)
     @info "Reading templates..."
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
-    delay, _  = window
     filter!(r -> !any(map(ismissing, r)), catalogue)
+    batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
+    templates = collectbatch(Tables.namedtupleiterator(catalogue), batch_number, total_batches)
+    delay, _  = window
     @info "Computing crosscorrelations and processing matches..."
-    progressbar = Progress(nrow(catalogue); output=stderr, enabled=!is_logging(stderr))
-    matches_vec = Vector{DataFrame}(undef, nrow(catalogue))
-    templates = collect(Tables.namedtupleiterator(catalogue))
+    progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
+    matches_vec = Vector{DataFrame}(undef, length(templates))
     Threads.@threads for n in eachindex(templates)
         template = templates[n]
         crosscorrelation = correlate(data, template, tolerance, fptype(precision))
@@ -173,6 +176,6 @@ match templates.
         next!(progressbar)
     end
     augmented_catalogue = reduce(vcat, matches_vec)
-    filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * ".jld2"
+    filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
     jldsave(joinpath(outputpath, filename); augmented_catalogue)
 end

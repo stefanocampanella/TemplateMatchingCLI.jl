@@ -21,6 +21,9 @@ zipdicts(dicts...) = Dict(key => tuple((d[key] for d in dicts)...) for key in in
 intersectkeys(dicts...) = Base.splat(collect ∘ intersect)(map(keys, dicts)) 
 
 
+collectbatch(xs, k, N) = N > 1 ? [x for (n, x) in enumerate(xs) if mod(n, N) == k] : collect(xs)
+
+
 function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MHz, speed, window, eltype)
     originsample = round(Int, freq_MHz * (template.datetime - data_starttime).value)
     templatecoordinates = Vector(template[[:north, :east, :up]])
