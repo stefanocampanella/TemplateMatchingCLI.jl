@@ -175,6 +175,7 @@ match templates.
         matches_vec[n] = matches
         next!(progressbar)
     end
+    @info "Saving augmented catalogue..."
     augmented_catalogue = reduce(vcat, matches_vec)
     filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
     jldsave(joinpath(outputpath, filename); augmented_catalogue)
