@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 #SBATCH --job-name=LAB-MATCHTEMPLATES
 #SBATCH --account=IscrC_SPACE
-#SBATCH --array=0-32
+#SBATCH --array=0-31
 #SBATCH --partition=m100_usr_prod
 #SBATCH --time=1:00:00
 #SBATCH --ntasks=1
@@ -30,6 +30,9 @@ DATA_SOURCE_FILE=${DATA_SOURCE_FILES[$1]}
 echo "Processing $DATA_SOURCE_FILE, templates batch $TEMPLATES_BATCH"
 
 mkdir -p "$OUTPUT_DIR"
+STARTTIME=$(date +%s)
 templatematchingcli matchtemplates --batches="$TEMPLATES_BATCH" "$DATA_SOURCE_FILE" "$TEMPLATES_FILE" "$SENSORS_FILE" "$OUTPUD_DIR"
+ENDTIME=$(date +%s)
+echo "Elapsed time: $((ENDTIME - STARTTIME)) seconds"
 
 exit

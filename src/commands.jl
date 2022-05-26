@@ -179,8 +179,13 @@ match templates.
         matches_vec[n] = matches
         next!(progressbar)
     end
-    @info "Saving augmented catalogue..."
-    augmented_catalogue = reduce(vcat, skipmissing(matches_vec))
-    filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
-    jldsave(joinpath(outputpath, filename); augmented_catalogue)
+    actual_matches =  skipmissing(matches_vec)
+    if isempty(actual_matches)
+        @info "No match found..."
+    else
+        @info "Saving augmented catalogue..."
+        augmented_catalogue = reduce(vcat, actual_matches)
+        filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
+        jldsave(joinpath(outputpath, filename); augmented_catalogue)
+    end
 end
