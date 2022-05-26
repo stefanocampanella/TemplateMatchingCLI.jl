@@ -31,7 +31,7 @@ echo "Processing $DATA_SOURCE_FILE, templates batch $TEMPLATES_BATCH"
 
 mkdir -p "$OUTPUT_DIR"
 STARTTIME=$(date +%s)
-templatematchingcli matchtemplates --batches="$TEMPLATES_BATCH" "$DATA_SOURCE_FILE" "$TEMPLATES_FILE" "$SENSORS_FILE" "$OUTPUD_DIR"
+templatematchingcli matchtemplates --batches="$TEMPLATES_BATCH" "$DATA_SOURCE_FILE" "$TEMPLATES_FILE" "$SENSORS_FILE" "$OUTPUT_DIR"
 ENDTIME=$(date +%s)
 echo "Elapsed time: $((ENDTIME - STARTTIME)) seconds"
 

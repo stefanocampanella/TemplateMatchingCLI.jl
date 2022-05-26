@@ -162,11 +162,10 @@ match templates.
             matches.peak_sample = peaks .+ delay
             matches.peak_height = heights
             matches.template .= template.index
-            x0 = [template.north, template.east, template.up]
             matches_data = [process_match(data, 
                                           template, 
                                           sensors,
-                                          [x0; (peak + delay) / freq],
+                                          [template.north, template.east, template.up, (peak + delay) / freq],
                                           freq,
                                           delay,
                                           speed,
@@ -174,9 +173,8 @@ match templates.
                                           correlationthreshold, 
                                           nchmin) 
                             for peak in peaks]
-            matches = hcat(matches, DataFrame(matches_data))
+            matches_vec[n] = hcat(matches, DataFrame(matches_data))
         end
-        matches_vec[n] = matches
         next!(progressbar)
     end
     actual_matches =  skipmissing(matches_vec)
