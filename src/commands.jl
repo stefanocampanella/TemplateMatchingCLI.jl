@@ -150,28 +150,32 @@ match templates.
     delay, _  = window
     @info "Computing crosscorrelations and processing matches..."
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
-    matches_vec = Vector{DataFrame}(undef, length(templates))
+    matches_vec = Vector{Union{DataFrame, Missing}}(undef, length(templates))
     Threads.@threads for n in eachindex(templates)
         template = templates[n]
         crosscorrelation = correlate(data, template, tolerance, fptype(precision))
         peaks, heights = TemplateMatching.findpeaks(crosscorrelation, heightthreshold, distance * (window[2] - window[1]))
-        matches = DataFrame()
-        matches.peak_sample = peaks .+ delay
-        matches.peak_height = heights
-        matches.template .= template.index
-        x0 = [template.north, template.east, template.up]
-        matches_data = [process_match(data, 
-                                      template, 
-                                      sensors,
-                                      [x0; (peak + delay) / freq],
-                                      freq,
-                                      delay,
-                                      speed,
-                                      tolerance,
-                                      correlationthreshold, 
-                                      nchmin) 
-                        for peak in peaks]
-        matches = hcat(matches, DataFrame(matches_data))
+        if isempty(peaks)
+            matches_vec[n] = missing
+        else
+            matches = DataFrame()
+            matches.peak_sample = peaks .+ delay
+            matches.peak_height = heights
+            matches.template .= template.index
+            x0 = [template.north, template.east, template.up]
+            matches_data = [process_match(data, 
+                                          template, 
+                                          sensors,
+                                          [x0; (peak + delay) / freq],
+                                          freq,
+                                          delay,
+                                          speed,
+                                          tolerance,
+                                          correlationthreshold, 
+                                          nchmin) 
+                            for peak in peaks]
+            matches = hcat(matches, DataFrame(matches_data))
+        end
         matches_vec[n] = matches
         next!(progressbar)
     end
