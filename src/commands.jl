@@ -162,17 +162,19 @@ match templates.
             matches.peak_sample = peaks .+ delay
             matches.peak_height = heights
             matches.template .= template.index
-            matches_data = [process_match(data, 
-                                          template, 
-                                          sensors,
-                                          [template.north, template.east, template.up, (peak + delay) / freq],
-                                          freq,
-                                          delay,
-                                          speed,
-                                          tolerance,
-                                          correlationthreshold, 
-                                          nchmin) 
-                            for peak in peaks]
+            matches_data = Vector{TemplateMatchEventData}(undef, length(peaks))
+            Threads.@threads for k in eachindex(matches_data)
+                matches_data[k] = process_match(data, 
+                                                template, 
+                                                sensors,
+                                                [template.north, template.east, template.up, (peaks[k] + delay) / freq],
+                                                freq,
+                                                delay,
+                                                speed,
+                                                tolerance,
+                                                correlationthreshold, 
+                                                nchmin)
+            end
             matches_vec[n] = hcat(matches, DataFrame(matches_data))
         end
         next!(progressbar)
