@@ -6,4 +6,5 @@
 **/.DS_Store
 **/*.log
 .vscode
+scratch
 **/*.code-workspace
