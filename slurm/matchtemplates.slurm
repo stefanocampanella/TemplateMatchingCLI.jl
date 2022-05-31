@@ -2,7 +2,7 @@
 #SBATCH --job-name=LAB-MATCHTEMPLATES
 #SBATCH --account=IscrC_SPACE
 #SBATCH --partition=m100_usr_prod
-#SBATCH --time=5:00:00
+#SBATCH --time=2:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=128
 #SBATCH --output=logs/%A_%a.log
