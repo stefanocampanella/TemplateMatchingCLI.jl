@@ -43,12 +43,16 @@ end
 
 
 function correlate(data, template, tolerance, element_type; direct=false)
+    iscudafunctional = CUDA.functional()
     channels = intersectkeys(data, template.data, template.offsets)
-    data_vec = [data[ch] for ch in channels]
-    template_vec = [template.data[ch] for ch in channels]
-    offsets_vec = [template.offsets[ch] for ch in channels]
+    data_vec = dict2array(data, channels, iscudafunctional)
+    template_vec = dict2array(template.data, channels, iscudafunctional)
+    offsets_vec = dict2array(template.offsets, channels, iscudafunctional)
     TemplateMatching.correlatetemplate(data_vec, template_vec, offsets_vec, tolerance, element_type, direct=direct)
 end
+
+
+dict2array(d, keys, getcuarray=false) = [getcuarray ? CuArray(d[key]) : d[key] for key in keys]
 
 
 function process_match(data, template, sensors, guess, freq, delay, speed, tolerance, cc_threshold, nch_threshold)

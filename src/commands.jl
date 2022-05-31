@@ -138,6 +138,13 @@ match templates.
                               precision=32, heightthreshold=0.4, distance=2, 
                               correlationthreshold=0.5, tolerance=5, nchmin=4,
                               batches="1/1")
+    if CUDA.functional()
+        gpus = CUDA.devices()
+        num_gpus = length(gpu_list)
+        @info "CUDA detected and functional, devices" gpu_list 
+    else
+        @info "CUDA not functional, using CPU"
+    end
     @info "Reading data..."
     data, freq = load(datapath, "data", "freq")
     @info "Reading sensors coordinates..."
@@ -152,6 +159,9 @@ match templates.
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
     matches_vec = Vector{Union{DataFrame, Missing}}(undef, length(templates))
     Threads.@threads for n in eachindex(templates)
+        if CUDA.functional()
+            device!(gpus[n % num_gpus])
+        end
         template = templates[n]
         crosscorrelation = correlate(data, template, tolerance, fptype(precision), direct=false)
         peaks, heights = TemplateMatching.findpeaks(crosscorrelation, heightthreshold, distance * (window[2] - window[1]))

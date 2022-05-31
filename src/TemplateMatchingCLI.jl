@@ -10,6 +10,7 @@ using DSP
 using JLD2
 using DataFrames
 using Tables
+using CUDA
 using Comonicon
 
 include("types.jl")
