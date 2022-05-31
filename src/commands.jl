@@ -153,7 +153,7 @@ match templates.
     matches_vec = Vector{Union{DataFrame, Missing}}(undef, length(templates))
     Threads.@threads for n in eachindex(templates)
         template = templates[n]
-        crosscorrelation = correlate(data, template, tolerance, fptype(precision))
+        crosscorrelation = correlate(data, template, tolerance, fptype(precision), direct=false)
         peaks, heights = TemplateMatching.findpeaks(crosscorrelation, heightthreshold, distance * (window[2] - window[1]))
         if isempty(peaks)
             matches_vec[n] = missing
