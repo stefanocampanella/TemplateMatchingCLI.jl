@@ -137,7 +137,7 @@ match templates.
 @cast function matchtemplates(datapath, templatespath, sensorspath, outputpath; 
                               precision=32, heightthreshold=0.4, distance=2, 
                               correlationthreshold=0.5, tolerance=5, nchmin=4,
-                              batches="1/1")
+                              maxpeaks=1024, maxtemplatepool=4, batches="1/1")
     if CUDA.functional()
         iscudafunctional = true
         gpus_itr = CUDA.devices()
@@ -174,7 +174,7 @@ match templates.
             peaks = Array(peaks)
             heights = Array(heights)
         end
-        if isempty(peaks)
+        if isempty(peaks) || length(peaks) > maxpeaks
             matches_vec[n] = missing
         else
             matches = DataFrame()

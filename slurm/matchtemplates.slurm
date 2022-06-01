@@ -5,6 +5,7 @@
 #SBATCH --time=2:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=128
+#SBATCH --gres=gpu:4
 #SBATCH --output=logs/%A_%a.log
 #SBATCH	--requeue 
 #SBATCH --verbose
@@ -16,6 +17,7 @@ TEMPLATES_FILE=$DATA_ROOT/gab6.jld2
 SENSORS_FILE=$DATA_ROOT/passive-xyz.csv
 OUTPUT_DIR=$DATA_ROOT/outputs
 
+export JULIA_CUDA_USE_BINARYBUILDER=false
 export JULIA_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export PATH=$PATH:~/.julia/bin
 
