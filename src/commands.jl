@@ -143,7 +143,7 @@ match templates.
         gpus_itr = CUDA.devices()
         gpus = collect(gpus_itr)
         num_gpus = length(gpus)
-        @info "CUDA detected and functional, devices" gpus_itr
+        @info "CUDA detected and functional, devices" CUDA.version() gpus_itr
     else
         iscudafunctional = false
         gpus = []
@@ -165,7 +165,7 @@ match templates.
     matches_vec = Vector{Union{DataFrame, Missing}}(undef, length(templates))
     Threads.@threads for n in eachindex(templates)
         if iscudafunctional 
-            device!(gpus[n % num_gpus])
+            device!(gpus[n % num_gpus + 1])
         end
         template = templates[n]
         crosscorrelation = correlate(data, template, tolerance, fptype(precision), direct=false)
