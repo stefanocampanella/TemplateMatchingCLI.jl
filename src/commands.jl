@@ -140,9 +140,10 @@ match templates.
                               batches="1/1")
     if CUDA.functional()
         iscudafunctional = true
-        gpus = CUDA.devices()
-        num_gpus = length(gpu_list)
-        @info "CUDA detected and functional, devices" gpu_list 
+        gpus_itr = CUDA.devices()
+        gpus = collect(gpus_itr)
+        num_gpus = length(gpus)
+        @info "CUDA detected and functional, devices" gpus_itr
     else
         iscudafunctional = false
         gpus = []
