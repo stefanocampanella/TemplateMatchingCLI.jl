@@ -68,13 +68,19 @@ function process_match(data, template, sensors, guess, freq, delay, speed, toler
         sensors_vec = [sensors[key] for key in validchannels]
         toas = [(sample + delay) / freq for (sample, _) in values(subsample_estimates)]
         candidate = TemplateMatching.locate(vcat.(sensors_vec, toas), speed, guess)
-        north, east, up, origin_time = candidate.minimizer
-        multilateration_residual = candidate.minimum
         crosscorrelation = mean(cc for (_, cc) in values(subsample_estimates))
-        data_vec = [data[key] for key in validchannels]
-        template_vec = [template.data[key] for key in validchannels]
-        offsets_vec = [template.offsets[key] for key in validchannels]
-        relative_magnitude = TemplateMatching.magnitude(data_vec, template_vec, offsets_vec)
+        if Optim.converged(candidate)
+            north, east, up, origin_time = candidate.minimizer
+            multilateration_residual = candidate.minimum
+            data_vec = [data[key] for key in validchannels]
+            template_vec = [template.data[key] for key in validchannels]
+            offsets_vec = [template.offsets[key] for key in validchannels]
+            relative_magnitude = TemplateMatching.magnitude(data_vec, template_vec, offsets_vec)
+        else
+            north, east, up, origin_time = guess
+            multilateration_residual = missing
+            relative_magnitude = missing
+        end
     else
         north, east, up, origin_time = guess
         multilateration_residual = missing

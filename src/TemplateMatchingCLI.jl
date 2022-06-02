@@ -12,6 +12,8 @@ using DataFrames
 using Tables
 using CUDA
 using Comonicon
+using Base: Semaphore, acquire, release
+using Optim
 
 include("types.jl")
 include("datetimeus.jl")

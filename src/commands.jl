@@ -137,19 +137,7 @@ match templates.
 @cast function matchtemplates(datapath, templatespath, sensorspath, outputpath; 
                               precision=32, heightthreshold=0.4, distance=2, 
                               correlationthreshold=0.5, tolerance=5, nchmin=4,
-                              maxpeaks=1024, maxtemplatepool=4, batches="1/1")
-    if CUDA.functional()
-        iscudafunctional = true
-        gpus_itr = CUDA.devices()
-        gpus = collect(gpus_itr)
-        num_gpus = length(gpus)
-        @info "CUDA detected and functional, devices" CUDA.version() gpus_itr
-    else
-        iscudafunctional = false
-        gpus = []
-        num_gpus = 0
-        @info "CUDA not functional, using CPU"
-    end
+                              maxpeaks=512, templatespergpu=2, batches="1/1")
     @info "Reading data..."
     data, freq = load(datapath, "data", "freq")
     @info "Reading sensors coordinates..."
@@ -163,17 +151,28 @@ match templates.
     @info "Computing crosscorrelations and processing matches..."
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
     matches_vec = Vector{Union{DataFrame, Missing}}(undef, length(templates))
+    if CUDA.functional()
+        iscudafunctional = true
+        gpus = collect(CUDA.devices())
+        num_gpus = length(gpus)
+        semaphores = [Semaphore(templatespergpu) for _ = 1:num_gpus]
+        @info "CUDA detected and functional, devices" CUDA.version() CUDA.devices()
+    else
+        iscudafunctional = false
+        @info "CUDA not functional, using CPU"
+    end
     Threads.@threads for n in eachindex(templates)
-        if iscudafunctional 
-            device!(gpus[n % num_gpus + 1])
-        end
         template = templates[n]
-        crosscorrelation = correlate(data, template, tolerance, fptype(precision), direct=false)
-        peaks, heights = TemplateMatching.findpeaks(crosscorrelation, heightthreshold, distance * (window[2] - window[1]))
         if iscudafunctional
-            peaks = Array(peaks)
-            heights = Array(heights)
+            current_gpu = Threads.threadid() % num_gpus + 1
+            acquire(semaphores[current_gpu])
+            device!(gpus[current_gpu])
+            crosscorrelation = correlate(data, template, tolerance, fptype(precision), direct=false)
+            release(semaphores[current_gpu])
+        else
+            crosscorrelation = correlate(data, template, tolerance, fptype(precision), direct=false)
         end
+        peaks, heights = TemplateMatching.findpeaks(crosscorrelation, heightthreshold, distance * (window[2] - window[1]))
         if isempty(peaks) || length(peaks) > maxpeaks
             matches_vec[n] = missing
         else
