@@ -42,12 +42,12 @@ function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MH
 end
 
 
-function correlate(data, template, tolerance, element_type; direct=false)
+function correlate(data, template, tolerance, element_type; fast=true)
     channels = intersectkeys(data, template.data, template.offsets)
     data_vec = dict2array(data, channels)
     template_vec = dict2array(template.data, channels)
     offsets_vec = dict2array(template.offsets, channels)
-    TemplateMatching.correlatetemplate(data_vec, template_vec, offsets_vec, tolerance, element_type, direct=direct)
+    TemplateMatching.correlatetemplate(data_vec, template_vec, offsets_vec, tolerance, element_type, fast=fast)
 end
 
 

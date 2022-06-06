@@ -171,10 +171,10 @@ match templates.
             acquire(semaphores[current_gpu])
             device!(gpus[current_gpu])
             cutemplate = Dict(key => CuArray(series) for (key, series) in template)
-            crosscorrelation = Array(correlate(cudata, cutemplate, tolerance, fptype(precision), direct=false))
+            crosscorrelation = Array(correlate(cudata, cutemplate, tolerance, fptype(precision)))
             release(semaphores[current_gpu])
         else
-            crosscorrelation = correlate(data, template, tolerance, fptype(precision), direct=false)
+            crosscorrelation = correlate(data, template, tolerance, fptype(precision))
         end
         peaks, heights = TemplateMatching.findpeaks(crosscorrelation, heightthreshold, distance * (window[2] - window[1]))
         if isempty(peaks) || length(peaks) > maxpeaks
