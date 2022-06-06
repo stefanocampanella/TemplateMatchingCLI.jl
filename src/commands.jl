@@ -126,13 +126,15 @@ match templates.
 
 # Options
 
-- `-p, --precision`: FP precision to use for computing crosscorrelations.
-- `-t, --tolerance`: sample tolerance in stacking.
-- `-h, --heightthreshold`: height threshold.
-- `-d, --distance`: minimum distance between peaks.
-- `-c, --correlationthreshold`: correlation threshold.
-- `-n, --nchmin`: minimum number of channels.
-- `-b, --batches`: batch to process.
+- `--precision`: FP precision to use for computing crosscorrelations.
+- `--tolerance`: sample tolerance in stacking.
+- `--heightthreshold`: height threshold.
+- `--distance`: minimum distance between peaks.
+- `--correlationthreshold`: correlation threshold.
+- `--nchmin`: minimum number of channels.
+- `--batches`: batch to process.
+- `--maxpeaks`: maximum number of detections to consider valid a template
+- `--templatespergpu`: maximum number of templates to be processed simultaneously on a single device
 """
 @cast function matchtemplates(datapath, templatespath, sensorspath, outputpath; 
                               precision=32, heightthreshold=0.4, distance=2, 
@@ -155,6 +157,7 @@ match templates.
         iscudafunctional = true
         gpus = collect(CUDA.devices())
         num_gpus = length(gpus)
+        cudata = Dict(key => CuArray(series) for (key, series) in data)
         semaphores = [Semaphore(templatespergpu) for _ = 1:num_gpus]
         @info "CUDA detected and functional, devices" CUDA.version() CUDA.devices()
     else
@@ -167,7 +170,8 @@ match templates.
             current_gpu = Threads.threadid() % num_gpus + 1
             acquire(semaphores[current_gpu])
             device!(gpus[current_gpu])
-            crosscorrelation = correlate(data, template, tolerance, fptype(precision), direct=false)
+            cutemplate = Dict(key => CuArray(series) for (key, series) in template)
+            crosscorrelation = Array(correlate(cudata, cutemplate, tolerance, fptype(precision), direct=false))
             release(semaphores[current_gpu])
         else
             crosscorrelation = correlate(data, template, tolerance, fptype(precision), direct=false)

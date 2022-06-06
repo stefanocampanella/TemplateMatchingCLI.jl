@@ -43,16 +43,40 @@ end
 
 
 function correlate(data, template, tolerance, element_type; direct=false)
-    tocuarray = CUDA.functional()
     channels = intersectkeys(data, template.data, template.offsets)
-    data_vec = dict2array(data, channels, tocuarray)
-    template_vec = dict2array(template.data, channels, tocuarray)
+    data_vec = dict2array(data, channels)
+    template_vec = dict2array(template.data, channels)
     offsets_vec = dict2array(template.offsets, channels)
     TemplateMatching.correlatetemplate(data_vec, template_vec, offsets_vec, tolerance, element_type, direct=direct)
 end
 
 
-dict2array(d, keys, tocuarray=false) = [tocuarray ? CuArray(d[key]) : d[key] for key in keys]
+function maxfilter_gpu!(y, x, l)
+    index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = gridDim().x * blockDim().x
+    for n in index:stride:length(x)
+        lower = max(n - l, firstindex(x))
+        upper = min(n + l, lastindex(x))
+        x_max = x[lower]
+        for k in lower + 1:upper
+            x_max = x_max > x[k] ? x_max : x[k]
+        end
+        @inbounds y[n] = x_max 
+    end
+    return
+end
+
+
+function maxfilter!(y::CuVector, x::CuVector, l)
+    kernel = @cuda launch=false maxfilter_gpu!(y, x, l)
+    config = launch_configuration(kernel.fun)
+    threads = min(length(y), config.threads)
+    blocks = cld(length(y), threads)
+    kernel(y, x, l; threads, blocks)
+end
+
+
+dict2array(d, keys) = [d[key] for key in keys]
 
 
 function process_match(data, template, sensors, guess, freq, delay, speed, tolerance, cc_threshold, nch_threshold)
