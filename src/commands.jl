@@ -171,7 +171,7 @@ match templates.
             acquire(semaphores[current_gpu])
             device!(gpus[current_gpu])
             cutemplate = Dict(key => CuArray(series) for (key, series) in template)
-            crosscorrelation = Array(correlate(cudata, cutemplate, tolerance, fptype(precision)))
+            crosscorrelation = correlate(cudata, cutemplate, tolerance, fptype(precision))
             release(semaphores[current_gpu])
         else
             crosscorrelation = correlate(data, template, tolerance, fptype(precision))
