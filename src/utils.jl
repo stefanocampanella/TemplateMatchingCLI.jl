@@ -51,31 +51,6 @@ function correlate(data, template, tolerance, element_type; direct=false)
 end
 
 
-function maxfilter_gpu!(y, x, l)
-    index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    stride = gridDim().x * blockDim().x
-    for n in index:stride:length(x)
-        lower = max(n - l, firstindex(x))
-        upper = min(n + l, lastindex(x))
-        x_max = x[lower]
-        for k in lower + 1:upper
-            x_max = x_max > x[k] ? x_max : x[k]
-        end
-        @inbounds y[n] = x_max 
-    end
-    return
-end
-
-
-function maxfilter!(y::CuVector, x::CuVector, l)
-    kernel = @cuda launch=false maxfilter_gpu!(y, x, l)
-    config = launch_configuration(kernel.fun)
-    threads = min(length(y), config.threads)
-    blocks = cld(length(y), threads)
-    kernel(y, x, l; threads, blocks)
-end
-
-
 dict2array(d, keys) = [d[key] for key in keys]
 
 
