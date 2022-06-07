@@ -157,7 +157,11 @@ match templates.
         iscudafunctional = true
         gpus = collect(CUDA.devices())
         num_gpus = length(gpus)
-        cudata = Dict(key => CuArray(series) for (key, series) in data)
+        cudatas = Dict{Int, Dict{Int, CuArray{fptype(precision), 1, CUDA.Mem.DeviceBuffer}}}()
+        for (n, g) in enumerate(gpus)
+            device!(g)
+            cudatas[n] = Dict(key => CuArray(series) for (key, series) in data)
+        end
         semaphores = [Semaphore(templatespergpu) for _ = 1:num_gpus]
         @info "CUDA detected and functional, devices" CUDA.version() CUDA.devices()
     else
@@ -170,11 +174,11 @@ match templates.
             current_gpu = Threads.threadid() % num_gpus + 1
             acquire(semaphores[current_gpu])
             device!(gpus[current_gpu])
-            cutemplate = Dict(key => CuArray(series) for (key, series) in template)
-            crosscorrelation = correlate(cudata, cutemplate, tolerance, fptype(precision))
+            cutemplate_data = Dict(key => CuArray(series) for (key, series) in template.data)
+            crosscorrelation = correlate(cudatas[current_gpu], cutemplate_data, template.offsets, tolerance, fptype(precision))
             release(semaphores[current_gpu])
         else
-            crosscorrelation = correlate(data, template, tolerance, fptype(precision))
+            crosscorrelation = correlate(data, template.data, template.offsets, tolerance, fptype(precision))
         end
         peaks, heights = TemplateMatching.findpeaks(crosscorrelation, heightthreshold, distance * (window[2] - window[1]))
         if isempty(peaks) || length(peaks) > maxpeaks
