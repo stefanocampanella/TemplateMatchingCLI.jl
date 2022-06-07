@@ -1,4 +1,15 @@
-function fptype(precision)
+function line_element(xt, v)
+    x = view(xt, 1:3)
+    t = xt[4]
+    dot(x, x) - v^2 * t^2
+end
+
+residue_rms(xt, sensors_readings_itr, v) = sqrt(mean(ys -> line_element(ys - xt, v)^2, sensors_readings_itr))
+
+locate(sensors_readings_itr, v, guess) = optimize(xt -> residue_rms(xt, sensors_readings_itr, v), guess)
+
+
+function fpsize2fptype(precision)
     if precision == 16
         type = Float16
     elseif precision == 32
@@ -42,12 +53,12 @@ function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MH
 end
 
 
-function correlate(data, template, offsets, tolerance, element_type; fast=true)
+function correlate(data, template, offsets, tolerance, element_type; usefft=true)
     channels = intersectkeys(data, template, offsets)
     data_vec = dict2array(data, channels)
     template_vec = dict2array(template, channels)
     offsets_vec = dict2array(offsets, channels)
-    TemplateMatching.correlatetemplate(data_vec, template_vec, offsets_vec, tolerance, element_type, fast=fast)
+    TemplateMatching.correlatetemplate(data_vec, template_vec, offsets_vec, tolerance, element_type, usefft=usefft)
 end
 
 
@@ -66,7 +77,7 @@ function process_match(data, template, sensors, guess, freq, delay, speed, toler
     if length(validchannels) >= nch_threshold
         sensors_vec = [sensors[key] for key in validchannels]
         toas = [(sample + delay) / freq for (sample, _) in values(subsample_estimates)]
-        candidate = TemplateMatching.locate(vcat.(sensors_vec, toas), speed, guess)
+        candidate = locate(vcat.(sensors_vec, toas), speed, guess)
         crosscorrelation = mean(cc for (_, cc) in values(subsample_estimates))
         if Optim.converged(candidate)
             north, east, up, origin_time = candidate.minimizer

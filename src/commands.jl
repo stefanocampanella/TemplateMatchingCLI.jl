@@ -27,7 +27,7 @@ all in the same directory `inputdirpath`.
                           exclude::AbstractString="")
     bad_channels = isempty(exclude) ? [] : map(s -> parse(Int, s), split(exclude, ","))
     @info "Reading files from $dirpath (experiment: $experiment, time: $datetime)..."
-    data = readlabdir(dirpath, datetime, experiment, bad_channels, typemax(Int), fptype(precision))
+    data = readlabdir(dirpath, datetime, experiment, bad_channels, typemax(Int), fpsize2fptype(precision))
     if isempty(data)
         @warn "No data found"
     else
@@ -82,7 +82,7 @@ Cut templates.
     sensorscoordinates = readsensorscoordinates(sensorsxyzpath)
     @info "Reading data and cutting templates..."
     re = Regex("\\Q$experiment\\E.jld2\$")
-    eltype = fptype(precision)
+    eltype = fpsize2fptype(precision)
     templates_data = Vector{MaybeTemplateData{eltype}}(missing, nrow(catalogue))
     templates_offsets = Vector{MaybeTemplateOffsets}(missing, nrow(catalogue))
     datapaths = collect(readdir(datadirpath, join=true))
@@ -153,11 +153,12 @@ match templates.
     @info "Computing crosscorrelations and processing matches..."
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
     matches_vec = Vector{Union{DataFrame, Missing}}(undef, length(templates))
+    FloatType = fpsize2fptype(precision)
     if CUDA.functional()
         iscudafunctional = true
         gpus = collect(CUDA.devices())
         num_gpus = length(gpus)
-        cudatas = Dict{Int, Dict{Int, CuArray{fptype(precision), 1, CUDA.Mem.DeviceBuffer}}}()
+        cudatas = Dict{Int, Dict{Int, CuArray{FloatType, 1, CUDA.Mem.DeviceBuffer}}}()
         for (n, g) in enumerate(gpus)
             device!(g)
             cudatas[n] = Dict(key => CuArray(series) for (key, series) in data)
@@ -175,12 +176,13 @@ match templates.
             acquire(semaphores[current_gpu])
             device!(gpus[current_gpu])
             cutemplate_data = Dict(key => CuArray(series) for (key, series) in template.data)
-            crosscorrelation = correlate(cudatas[current_gpu], cutemplate_data, template.offsets, tolerance, fptype(precision))
+            cusignal = correlate(cudatas[current_gpu], cutemplate_data, template.offsets, tolerance, FloatType)
+            signal = convert(OffsetVector{FloatType, Vector{FloatType}}, cusignal)
             release(semaphores[current_gpu])
         else
-            crosscorrelation = correlate(data, template.data, template.offsets, tolerance, fptype(precision))
+            signal = correlate(data, template.data, template.offsets, tolerance, FloatType)
         end
-        peaks, heights = TemplateMatching.findpeaks(crosscorrelation, heightthreshold, distance * (window[2] - window[1]))
+        peaks, heights = TemplateMatching.findpeaks(signal, heightthreshold, distance * (window[2] - window[1]))
         if isempty(peaks) || length(peaks) > maxpeaks
             matches_vec[n] = missing
         else
