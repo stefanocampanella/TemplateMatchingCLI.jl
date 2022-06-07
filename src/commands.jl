@@ -179,8 +179,10 @@ match templates.
                 device!(gpus[current_gpu])
                 cutemplate_data = Dict(key => CuArray(series) for (key, series) in template.data)
                 cusignal = correlate(cudatas[current_gpu], cutemplate_data, template.offsets, tolerance, FloatType)
-                cusignal .= abs.(cusignal .- median(parent(cusignal)))
-                cusignal ./= median(parent(cusignal))
+                let p = parent(cusignal)
+                    p .= abs.(p .- median(p))
+                    p ./= median(p)
+                end
                 signal = convert(OffsetVector{FloatType, Vector{FloatType}}, cusignal)
             catch e
                 @warn "There was an error while computing cross-correlation, skipping template $(template.index)" e
