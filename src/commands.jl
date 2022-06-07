@@ -171,6 +171,7 @@ match templates.
     end
     Threads.@threads for n in eachindex(templates)
         template = templates[n]
+        signal = OffsetVector{FloatType, Vector{FloatType}}(undef, 0)
         if iscudafunctional
             current_gpu = Threads.threadid() % num_gpus + 1
             acquire(semaphores[current_gpu])
