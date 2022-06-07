@@ -183,6 +183,7 @@ match templates.
                 signal = convert(OffsetVector{FloatType, Vector{FloatType}}, cusignal)
             catch e
                 @warn "There was an error while computing cross-correlation, skipping template $(template.index)" e
+                continue
             finally
                 release(semaphores[current_gpu])
             end
