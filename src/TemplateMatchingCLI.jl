@@ -14,6 +14,7 @@ using CUDA
 using Comonicon
 using Base: Semaphore, acquire, release
 using Optim
+using OffsetArrays
 
 include("types.jl")
 include("datetimeus.jl")
