@@ -137,7 +137,7 @@ match templates.
 - `--templatespergpu`: maximum number of templates to be processed simultaneously on a single device
 """
 @cast function matchtemplates(datapath, templatespath, sensorspath, outputpath; 
-                              precision=32, heightthreshold=0.4, distance=2, 
+                              precision=32, heightthreshold=16, distance=2, 
                               correlationthreshold=0.5, tolerance=5, nchmin=4,
                               maxpeaks=512, templatespergpu=2, batches="1/1")
     @info "Reading data..."
@@ -174,13 +174,22 @@ match templates.
         if iscudafunctional
             current_gpu = Threads.threadid() % num_gpus + 1
             acquire(semaphores[current_gpu])
-            device!(gpus[current_gpu])
-            cutemplate_data = Dict(key => CuArray(series) for (key, series) in template.data)
-            cusignal = correlate(cudatas[current_gpu], cutemplate_data, template.offsets, tolerance, FloatType)
-            signal = convert(OffsetVector{FloatType, Vector{FloatType}}, cusignal)
-            release(semaphores[current_gpu])
+            try
+                device!(gpus[current_gpu])
+                cutemplate_data = Dict(key => CuArray(series) for (key, series) in template.data)
+                cusignal = correlate(cudatas[current_gpu], cutemplate_data, template.offsets, tolerance, FloatType)
+                cusignal .= abs.(cusignal .- median(cusignal))
+                cusignal ./= median(cusignal)
+                signal = convert(OffsetVector{FloatType, Vector{FloatType}}, cusignal)
+            catch e
+                @warn "There was an error while computing cross-correlation, skipping template $(template.index)" e
+            finally
+                release(semaphores[current_gpu])
+            end
         else
             signal = correlate(data, template.data, template.offsets, tolerance, FloatType)
+            signal .= abs.(signal .- median(signal))
+            signal ./= median(signal)
         end
         peaks, heights = TemplateMatching.findpeaks(signal, heightthreshold, distance * (window[2] - window[1]))
         if isempty(peaks) || length(peaks) > maxpeaks

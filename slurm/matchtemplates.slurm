@@ -2,6 +2,7 @@
 #SBATCH --job-name=LAB-MATCHTEMPLATES
 #SBATCH --account=IscrC_SPACE
 #SBATCH --partition=m100_usr_prod
+#SBATCH --qos=m100_qos_dbg
 #SBATCH --time=2:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=128
