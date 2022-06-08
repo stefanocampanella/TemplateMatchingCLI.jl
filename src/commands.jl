@@ -152,48 +152,42 @@ match templates.
     filter!(r -> !any(map(ismissing, r)), catalogue)
     batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
     templates = collectbatch(Tables.namedtupleiterator(catalogue), batch_number, total_batches)
-    delay, _  = window
     @info "Computing crosscorrelations and processing matches."
+    FloatType = fpsize2fptype(precision)
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
     alldetections = Vector{Union{DataFrame, Missing}}(undef, length(templates))
-    FloatType = fpsize2fptype(precision)
     if CUDA.functional()
         @info "CUDA detected and functional." CUDA.version() CUDA.devices()
-        iscudafunctional = true
         gpus = collect(CUDA.devices())
-        num_gpus = length(gpus)
-        datatocorrelate = MultiDeviceStream{FloatType}(undef, num_gpus)
+        datatocorrelate = similar(gpus, MultiDeviceStream{FloatType})
         for (n, g) in enumerate(gpus)
             device!(g)
             datatocorrelate[n] = g, Semaphore(templatespergpu), Dict(key => CuArray(FloatType.(series)) for (key, series) in data)
         end
     else
         @info "CUDA not functional, using CPU."
-        iscudafunctional = false
         datatocorrelate = Dict(key => FloatType.(series) for (key, series) in data)
     end
     Threads.@threads for n in eachindex(templates)
         template = templates[n]
+        peaks = nothing
+        heights = nothing
         try
-            if iscudafunctional
-                signal = computesignal(datatocorrelate, template, tolerance, FloatType)
-            else
-                signal = computesignal(datatocorrelate, template, tolerance, FloatType)
-            end
+            signal = computesignal(datatocorrelate, template, tolerance, FloatType)
+            peaks, heights = TemplateMatching.findpeaks(signal, heightthreshold, distance * (window[2] - window[1]))
         catch e
             @warn "There was an error while computing cross-correlation, skipping template $(template.index)." e
             alldetections[n] = missing
             next!(progressbar)
             continue
         end
-        peaks, heights = TemplateMatching.findpeaks(signal, heightthreshold, distance * (window[2] - window[1]))
         if isempty(peaks) || length(peaks) > maxpeaks
             alldetections[n] = missing
         else
             try
                 alldetections[n] = processdetections(data, template, sensors,
                                                      peaks, heights, 
-                                                     delay, freq, speed, 
+                                                     window[1], freq, speed, 
                                                      tolerance, correlationthreshold, nchmin)
             catch e
                 @warn "There was an error while processing detections, skipping template $(template.index)." e
