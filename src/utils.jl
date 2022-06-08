@@ -58,6 +58,19 @@ function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MH
 end
 
 
+function makedata(data, gpus::Vector{CuDevice}, FloatType, templatespergpu)
+    datatocorrelate = similar(gpus, MultiDeviceStream{FloatType})
+    for (n, g) in enumerate(gpus)
+        device!(g)
+        datatocorrelate[n] = g, Semaphore(templatespergpu), Dict(key => CuArray(FloatType.(series)) for (key, series) in data)
+    end
+    datatocorrelate
+end
+
+
+makedata(data, gpus::Nothing, FloatType, templatespergpu) = Dict(key => FloatType.(series) for (key, series) in data)
+
+
 function correlate(data, template, offsets, tolerance, element_type; usefft=true)
     channels = intersectkeys(data, template, offsets)
     data_vec = dict2array(data, channels)

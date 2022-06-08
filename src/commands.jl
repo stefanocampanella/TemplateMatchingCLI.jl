@@ -115,7 +115,6 @@ Cut templates.
 end
 
 
-
 """
 match templates.
 
@@ -139,10 +138,10 @@ match templates.
 - `--templatespergpu`: maximum number of templates to be processed simultaneously on a single device
 """
 @cast function matchtemplates(datapath::AbstractString, templatespath::AbstractString, 
-                              sensorspath::AbstractString, outputpath::AbstractString; 
-                              precision::Int=16, heightthreshold::Int=12, distance::Int=2, 
-                              correlationthreshold::Float64=0.5, tolerance::Int=5, nchmin::Int=4,
-                              maxpeaks::Int=1024, templatespergpu::Int=3, batches::AbstractString="1/1")
+                            sensorspath::AbstractString, outputpath::AbstractString; 
+                            precision::Int=16, heightthreshold::Int=12, distance::Int=2, 
+                            correlationthreshold::Float64=0.5, tolerance::Int=5, nchmin::Int=4,
+                            maxpeaks::Int=1024, templatespergpu::Int=3, batches::AbstractString="1/1")
     @info "Reading data."
     data, freq = load(datapath, "data", "freq")
     @info "Reading sensors coordinates."
@@ -156,18 +155,7 @@ match templates.
     FloatType = fpsize2fptype(precision)
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
     alldetections = Vector{Union{DataFrame, Missing}}(undef, length(templates))
-    if CUDA.functional()
-        @info "CUDA detected and functional." CUDA.version() CUDA.devices()
-        gpus = collect(CUDA.devices())
-        datatocorrelate = similar(gpus, MultiDeviceStream{FloatType})
-        for (n, g) in enumerate(gpus)
-            device!(g)
-            datatocorrelate[n] = g, Semaphore(templatespergpu), Dict(key => CuArray(FloatType.(series)) for (key, series) in data)
-        end
-    else
-        @info "CUDA not functional, using CPU."
-        datatocorrelate = Dict(key => FloatType.(series) for (key, series) in data)
-    end
+    datatocorrelate = makedata(data, CUDA_DEVICES, FloatType, templatespergpu) 
     Threads.@threads for n in eachindex(templates)
         template = templates[n]
         peaks = nothing
@@ -186,9 +174,9 @@ match templates.
         else
             try
                 alldetections[n] = processdetections(data, template, sensors,
-                                                     peaks, heights, 
-                                                     window[1], freq, speed, 
-                                                     tolerance, correlationthreshold, nchmin)
+                                                    peaks, heights, 
+                                                    window[1], freq, speed, 
+                                                    tolerance, correlationthreshold, nchmin)
             catch e
                 @warn "There was an error while processing detections, skipping template $(template.index)." e
                 alldetections[n] = missing
