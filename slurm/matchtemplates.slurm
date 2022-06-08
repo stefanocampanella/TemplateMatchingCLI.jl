@@ -25,6 +25,6 @@ mapfile -t DATA_SOURCE_FILES < <(find "$SOURCE_DIR" -type f -name "*_gab6.jld2" 
 DATA_SOURCE_FILE=${DATA_SOURCE_FILES[SLURM_ARRAY_TASK_ID]}
 
 mkdir -p "$OUTPUT_DIR"
-time templatematchingcli matchtemplates "$DATA_SOURCE_FILE" "$TEMPLATES_FILE" "$SENSORS_FILE" "$OUTPUT_DIR"
+templatematchingcli matchtemplates "$DATA_SOURCE_FILE" "$TEMPLATES_FILE" "$SENSORS_FILE" "$OUTPUT_DIR"
 
 exit
