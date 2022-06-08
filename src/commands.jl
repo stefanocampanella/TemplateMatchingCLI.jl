@@ -152,7 +152,7 @@ match templates.
     delay, _  = window
     @info "Computing crosscorrelations and processing matches..."
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
-    matches_vec = Vector{Union{DataFrame, Missing}}(undef, length(templates))
+    alldetections = Vector{Union{DataFrame, Missing}}(undef, length(templates))
     FloatType = fpsize2fptype(precision)
     if CUDA.functional()
         iscudafunctional = true
@@ -187,6 +187,7 @@ match templates.
                 signal = convert(OffsetVector{FloatType, Vector{FloatType}}, cusignal)
             catch e
                 @warn "There was an error while computing cross-correlation, skipping template $(template.index)" e
+                alldetections[n] = missing
                 continue
             finally
                 release(semaphores[current_gpu])
@@ -198,30 +199,35 @@ match templates.
         end
         peaks, heights = TemplateMatching.findpeaks(signal, heightthreshold, distance * (window[2] - window[1]))
         if isempty(peaks) || length(peaks) > maxpeaks
-            matches_vec[n] = missing
+            alldetections[n] = missing
         else
-            matches = DataFrame()
-            matches.peak_sample = peaks .+ delay
-            matches.peak_height = heights
-            matches.template .= template.index
-            matches_data = Vector{TemplateMatchEventData}(undef, length(peaks))
-            Threads.@threads for k in eachindex(matches_data)
-                matches_data[k] = process_match(data, 
-                                                template, 
-                                                sensors,
-                                                [template.north, template.east, template.up, (peaks[k] + delay) / freq],
-                                                freq,
-                                                delay,
-                                                speed,
-                                                tolerance,
-                                                correlationthreshold, 
-                                                nchmin)
+            try
+                detections = DataFrame()
+                detections.peak_sample = peaks .+ delay
+                detections.peak_height = heights
+                detections.template .= template.index
+                detectionsdata = Vector{TemplateMatchEventData}(undef, length(peaks))
+                Threads.@threads for k in eachindex(detectionsdata)
+                    detectionsdata[k] = processdetection(data, 
+                                                         template, 
+                                                         sensors,
+                                                         [template.north, template.east, template.up, (peaks[k] + delay) / freq],
+                                                         freq,
+                                                         delay,
+                                                         speed,
+                                                         tolerance,
+                                                         correlationthreshold, 
+                                                         nchmin)
+                end
+                alldetections[n] = hcat(detections, DataFrame(detectionsdata))
+            catch e
+                @warn "There was an error while processing detections, skipping template $(template.index)" e
+                alldetections[n] = missing
             end
-            matches_vec[n] = hcat(matches, DataFrame(matches_data))
         end
         next!(progressbar)
     end
-    actual_matches =  skipmissing(matches_vec)
+    actual_matches =  skipmissing(alldetections)
     if isempty(actual_matches)
         @info "No match found..."
     else

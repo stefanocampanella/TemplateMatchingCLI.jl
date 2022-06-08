@@ -65,7 +65,7 @@ end
 dict2array(d, keys) = [d[key] for key in keys]
 
 
-function process_match(data, template, sensors, guess, freq, delay, speed, tolerance, cc_threshold, nch_threshold)
+function processdetection(data, template, sensors, guess, freq, delay, speed, tolerance, cc_threshold, nch_threshold)
     commonchannels = intersectkeys(data, template.data, template.offsets, sensors)
     subsample_estimates = Dict(key => TemplateMatching.estimatetoa(data[key], 
                                                                    template.data[key], 
