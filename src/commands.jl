@@ -137,9 +137,9 @@ match templates.
 - `--templatespergpu`: maximum number of templates to be processed simultaneously on a single device
 """
 @cast function matchtemplates(datapath, templatespath, sensorspath, outputpath; 
-                              precision=32, heightthreshold=16, distance=2, 
+                              precision=16, heightthreshold=12, distance=2, 
                               correlationthreshold=0.5, tolerance=5, nchmin=4,
-                              maxpeaks=512, templatespergpu=2, batches="1/1")
+                              maxpeaks=4096, templatespergpu=4, batches="1/1")
     @info "Reading data..."
     data, freq = load(datapath, "data", "freq")
     @info "Reading sensors coordinates..."
@@ -161,12 +161,13 @@ match templates.
         cudatas = Dict{Int, Dict{Int, CuArray{FloatType, 1, CUDA.Mem.DeviceBuffer}}}()
         for (n, g) in enumerate(gpus)
             device!(g)
-            cudatas[n] = Dict(key => CuArray(series) for (key, series) in data)
+            cudatas[n] = Dict(key => CuArray(FloatType.(series)) for (key, series) in data)
         end
         semaphores = [Semaphore(templatespergpu) for _ = 1:num_gpus]
         @info "CUDA detected and functional, devices" CUDA.version() CUDA.devices()
     else
         iscudafunctional = false
+        datatocorrelate = Dict(key => FloatType.(series) for (key, series) in data)
         @info "CUDA not functional, using CPU"
     end
     Threads.@threads for n in eachindex(templates)
@@ -177,7 +178,7 @@ match templates.
             acquire(semaphores[current_gpu])
             try
                 device!(gpus[current_gpu])
-                cutemplate_data = Dict(key => CuArray(series) for (key, series) in template.data)
+                cutemplate_data = Dict(key => CuArray(FloatType.(series)) for (key, series) in template.data)
                 cusignal = correlate(cudatas[current_gpu], cutemplate_data, template.offsets, tolerance, FloatType)
                 let p = parent(cusignal)
                     p .= abs.(p .- median(p))
@@ -191,7 +192,7 @@ match templates.
                 release(semaphores[current_gpu])
             end
         else
-            signal = correlate(data, template.data, template.offsets, tolerance, FloatType)
+            signal = correlate(datatocorrelate, template.data, template.offsets, tolerance, FloatType)
             signal .= abs.(signal .- median(signal))
             signal ./= median(signal)
         end
