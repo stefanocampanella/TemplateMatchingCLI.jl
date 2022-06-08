@@ -2,7 +2,7 @@ Stream{T} = Dict{Int, Vector{T}} where T <: AbstractFloat
 
 DeviceStream{T} = Dict{Int, CuArray{T, 1, CUDA.Mem.DeviceBuffer}} where T <: AbstractFloat
 
-MultiDeviceStream{T} = Vector{Tuple{CuDevice, Semaphore, DeviceStream{T}}} where T <: AbstractFloat
+MultiDeviceStream{T} = Tuple{CuDevice, Semaphore, DeviceStream{T}} where T <: AbstractFloat
 
 Offsets = Dict{Int, Int}
 

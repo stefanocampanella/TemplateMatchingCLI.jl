@@ -67,7 +67,7 @@ function correlate(data, template, offsets, tolerance, element_type; usefft=true
 end
 
 
-function computesignal(datatocorrelate::MultiDeviceStream{T}, template, tolerance, FloatType) where {T <: AbstractFloat}
+function computesignal(datatocorrelate::Vector{MultiDeviceStream{T}}, template, tolerance, FloatType) where {T <: AbstractFloat}
     gpu, semaphore, cudata = datatocorrelate[Threads.threadid() % length(datatocorrelate) + 1]
     acquire(semaphore)
     try
