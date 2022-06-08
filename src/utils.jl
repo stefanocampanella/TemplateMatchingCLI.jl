@@ -1,12 +1,29 @@
+is_logging(io) = isa(io, Base.TTY) == false || (get(ENV, "CI", nothing) == "true")
+
+
+zipdicts(dicts...) = Dict(key => tuple((d[key] for d in dicts)...) for key in intersectkeys(dicts...))
+
+
+intersectkeys(dicts...) = Base.splat(collect ∘ intersect)(map(keys, dicts)) 
+
+
+collectbatch(xs, k, N) = N > 1 ? [x for (n, x) in enumerate(xs) if mod(n, N) == k] : collect(xs)
+
+
+dict2array(d, keys) = [d[key] for key in keys]
+
+
+residue_rms(xt, sensors_readings_itr, v) = sqrt(mean(ys -> line_element(ys - xt, v)^2, sensors_readings_itr))
+
+
+locate(sensors_readings_itr, v, guess) = optimize(xt -> residue_rms(xt, sensors_readings_itr, v), guess)
+
+
 function line_element(xt, v)
     x = view(xt, 1:3)
     t = xt[4]
     dot(x, x) - v^2 * t^2
 end
-
-residue_rms(xt, sensors_readings_itr, v) = sqrt(mean(ys -> line_element(ys - xt, v)^2, sensors_readings_itr))
-
-locate(sensors_readings_itr, v, guess) = optimize(xt -> residue_rms(xt, sensors_readings_itr, v), guess)
 
 
 function fpsize2fptype(precision)
@@ -21,18 +38,6 @@ function fpsize2fptype(precision)
     end
     type
 end
-
-
-is_logging(io) = isa(io, Base.TTY) == false || (get(ENV, "CI", nothing) == "true")
-
-
-zipdicts(dicts...) = Dict(key => tuple((d[key] for d in dicts)...) for key in intersectkeys(dicts...))
-
-
-intersectkeys(dicts...) = Base.splat(collect ∘ intersect)(map(keys, dicts)) 
-
-
-collectbatch(xs, k, N) = N > 1 ? [x for (n, x) in enumerate(xs) if mod(n, N) == k] : collect(xs)
 
 
 function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MHz, speed, window, eltype)
@@ -62,8 +67,54 @@ function correlate(data, template, offsets, tolerance, element_type; usefft=true
 end
 
 
-dict2array(d, keys) = [d[key] for key in keys]
+function computesignal(datatocorrelate::MultiDeviceStream{T}, template, tolerance, FloatType) where {T <: AbstractFloat}
+    gpu, semaphore, cudata = datatocorrelate[Threads.threadid() % length(datatocorrelate) + 1]
+    acquire(semaphore)
+    try
+        device!(gpu)
+        cutemplate_data = Dict(key => CuArray(FloatType.(series)) for (key, series) in template.data)
+        cusignal = correlate(cudata, cutemplate_data, template.offsets, tolerance, FloatType)
+        let p = parent(cusignal)
+            p .= abs.(p .- median(p))
+            p ./= median(p)
+        end
+        convert(OffsetVector{FloatType, Vector{FloatType}}, cusignal)
+    catch e
+        throw(e)
+    finally
+        release(semaphore)
+    end
+end
 
+
+function computesignal(data::Dict{Int, Vector{T}}, template, tolerance, FloatType) where {T <: AbstractFloat}
+    signal = correlate(data, template.data, template.offsets, tolerance, FloatType)
+    signal .= abs.(signal .- median(signal))
+    signal ./= median(signal)
+    signal
+end
+
+
+function processdetections(data, template, sensors, peaks, heights, delay, freq, speed, tolerance, correlationthreshold, nchmin)
+    detections = DataFrame()
+    detections.peak_sample = peaks .+ delay
+    detections.peak_height = heights
+    detections.template .= template.index
+    detectionsdata = Vector{TemplateMatchEventData}(undef, length(peaks))
+    Threads.@threads for k in eachindex(detectionsdata)
+        detectionsdata[k] = processdetection(data, 
+                                             template, 
+                                             sensors,
+                                             [template.north, template.east, template.up, (peaks[k] + delay) / freq],
+                                             freq,
+                                             delay,
+                                             speed,
+                                             tolerance,
+                                             correlationthreshold, 
+                                             nchmin)
+    end
+    hcat(detections, DataFrame(detectionsdata))
+end
 
 function processdetection(data, template, sensors, guess, freq, delay, speed, tolerance, cc_threshold, nch_threshold)
     commonchannels = intersectkeys(data, template.data, template.offsets, sensors)

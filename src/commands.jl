@@ -20,7 +20,8 @@ all in the same directory `inputdirpath`.
 - `-r, --resamplefactor`: resampling factor.
 - `-e, --exclude`: channels to exclude.
 """
-@cast function preprocess(dirpath, datetime, experiment, outputpath; 
+@cast function preprocess(dirpath::AbstractString, datetime::AbstractString, 
+                          experiment::AbstractString, outputpath::AbstractString; 
                           precision::Int=32, freq::Int=10_000_000, 
                           lopassfreq::Int=50_000, hipassfreq::Int=300_000, 
                           numpoles::Int=4, resamplefactor::Int=5, 
@@ -74,8 +75,9 @@ Cut templates.
 - `-s, --speed`: P-wave speed in cm/us.
 - `-w, --window`: template window in samples.
 """
-@cast function maketemplates(datadirpath, experiment, sensorsxyzpath, cataloguepath, outputpath; 
-                             precision=32, speed=0.67, window=(100, 500))
+@cast function maketemplates(datadirpath::AbstractString, experiment::AbstractString, sensorsxyzpath::AbstractString, 
+                             cataloguepath::AbstractString, outputpath::AbstractString; 
+                             precision::Int=32, speed::Float64=0.67, window::Tuple{Int, Int}=(100, 500))
     @info "Reading catalogue..."
     catalogue = readcatalogue(cataloguepath)
     @info "Reading sensors coordinates..."
@@ -136,103 +138,76 @@ match templates.
 - `--maxpeaks`: maximum number of detections to consider valid a template
 - `--templatespergpu`: maximum number of templates to be processed simultaneously on a single device
 """
-@cast function matchtemplates(datapath, templatespath, sensorspath, outputpath; 
-                              precision=16, heightthreshold=12, distance=2, 
-                              correlationthreshold=0.5, tolerance=5, nchmin=4,
-                              maxpeaks=4096, templatespergpu=4, batches="1/1")
-    @info "Reading data..."
+@cast function matchtemplates(datapath::AbstractString, templatespath::AbstractString, 
+                              sensorspath::AbstractString, outputpath::AbstractString; 
+                              precision::Int=16, heightthreshold::Int=12, distance::Int=2, 
+                              correlationthreshold::Float64=0.5, tolerance::Int=5, nchmin::Int=4,
+                              maxpeaks::Int=1024, templatespergpu::Int=3, batches::AbstractString="1/1")
+    @info "Reading data."
     data, freq = load(datapath, "data", "freq")
-    @info "Reading sensors coordinates..."
+    @info "Reading sensors coordinates."
     sensors = readsensorscoordinates(sensorspath)
-    @info "Reading templates..."
+    @info "Reading templates."
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
     filter!(r -> !any(map(ismissing, r)), catalogue)
     batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
     templates = collectbatch(Tables.namedtupleiterator(catalogue), batch_number, total_batches)
     delay, _  = window
-    @info "Computing crosscorrelations and processing matches..."
+    @info "Computing crosscorrelations and processing matches."
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
     alldetections = Vector{Union{DataFrame, Missing}}(undef, length(templates))
     FloatType = fpsize2fptype(precision)
     if CUDA.functional()
+        @info "CUDA detected and functional." CUDA.version() CUDA.devices()
         iscudafunctional = true
         gpus = collect(CUDA.devices())
         num_gpus = length(gpus)
-        cudatas = Dict{Int, Dict{Int, CuArray{FloatType, 1, CUDA.Mem.DeviceBuffer}}}()
+        datatocorrelate = MultiDeviceStream{FloatType}(undef, num_gpus)
         for (n, g) in enumerate(gpus)
             device!(g)
-            cudatas[n] = Dict(key => CuArray(FloatType.(series)) for (key, series) in data)
+            datatocorrelate[n] = g, Semaphore(templatespergpu), Dict(key => CuArray(FloatType.(series)) for (key, series) in data)
         end
-        semaphores = [Semaphore(templatespergpu) for _ = 1:num_gpus]
-        @info "CUDA detected and functional, devices" CUDA.version() CUDA.devices()
     else
+        @info "CUDA not functional, using CPU."
         iscudafunctional = false
         datatocorrelate = Dict(key => FloatType.(series) for (key, series) in data)
-        @info "CUDA not functional, using CPU"
     end
     Threads.@threads for n in eachindex(templates)
         template = templates[n]
-        signal = OffsetVector(Vector{FloatType}(undef, 0))
-        if iscudafunctional
-            current_gpu = Threads.threadid() % num_gpus + 1
-            acquire(semaphores[current_gpu])
-            try
-                device!(gpus[current_gpu])
-                cutemplate_data = Dict(key => CuArray(FloatType.(series)) for (key, series) in template.data)
-                cusignal = correlate(cudatas[current_gpu], cutemplate_data, template.offsets, tolerance, FloatType)
-                let p = parent(cusignal)
-                    p .= abs.(p .- median(p))
-                    p ./= median(p)
-                end
-                signal = convert(OffsetVector{FloatType, Vector{FloatType}}, cusignal)
-            catch e
-                @warn "There was an error while computing cross-correlation, skipping template $(template.index)" e
-                alldetections[n] = missing
-                continue
-            finally
-                release(semaphores[current_gpu])
+        try
+            if iscudafunctional
+                signal = computesignal(datatocorrelate, template, tolerance, FloatType)
+            else
+                signal = computesignal(datatocorrelate, template, tolerance, FloatType)
             end
-        else
-            signal = correlate(datatocorrelate, template.data, template.offsets, tolerance, FloatType)
-            signal .= abs.(signal .- median(signal))
-            signal ./= median(signal)
+        catch e
+            @warn "There was an error while computing cross-correlation, skipping template $(template.index)." e
+            alldetections[n] = missing
+            next!(progressbar)
+            continue
         end
         peaks, heights = TemplateMatching.findpeaks(signal, heightthreshold, distance * (window[2] - window[1]))
         if isempty(peaks) || length(peaks) > maxpeaks
             alldetections[n] = missing
         else
             try
-                detections = DataFrame()
-                detections.peak_sample = peaks .+ delay
-                detections.peak_height = heights
-                detections.template .= template.index
-                detectionsdata = Vector{TemplateMatchEventData}(undef, length(peaks))
-                Threads.@threads for k in eachindex(detectionsdata)
-                    detectionsdata[k] = processdetection(data, 
-                                                         template, 
-                                                         sensors,
-                                                         [template.north, template.east, template.up, (peaks[k] + delay) / freq],
-                                                         freq,
-                                                         delay,
-                                                         speed,
-                                                         tolerance,
-                                                         correlationthreshold, 
-                                                         nchmin)
-                end
-                alldetections[n] = hcat(detections, DataFrame(detectionsdata))
+                alldetections[n] = processdetections(data, template, sensors,
+                                                     peaks, heights, 
+                                                     delay, freq, speed, 
+                                                     tolerance, correlationthreshold, nchmin)
             catch e
-                @warn "There was an error while processing detections, skipping template $(template.index)" e
+                @warn "There was an error while processing detections, skipping template $(template.index)." e
                 alldetections[n] = missing
             end
         end
         next!(progressbar)
     end
-    actual_matches =  skipmissing(alldetections)
-    if isempty(actual_matches)
-        @info "No match found..."
+    actual_detections =  skipmissing(alldetections)
+    if isempty(actual_detections)
+        @info "No match found."
     else
-        @info "Saving augmented catalogue..."
-        augmented_catalogue = reduce(vcat, actual_matches)
+        @info "Saving augmented catalogue."
+        augmented_catalogue = reduce(vcat, actual_detections)
         filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
         jldsave(joinpath(outputpath, filename); augmented_catalogue)
     end
