@@ -141,7 +141,7 @@ match templates.
                               sensorspath::AbstractString, outputpath::AbstractString; 
                               precision::Int=16, threshold::Int=12, distance::Int=2, 
                               ccmin::Float64=0.5, tol::Int=5, nchmin::Int=4,
-                              npeaksmax::Int=1024, templatespergpu::Int=3, batches::AbstractString="1/1")
+                              npeaksmax::Int=1024, templatespergpu::Int=2, batches::AbstractString="1/1")
     gpus = CuDevice[]
     if CUDA.functional()
         @info "CUDA detected and functional." CUDA.version() CUDA.devices()
