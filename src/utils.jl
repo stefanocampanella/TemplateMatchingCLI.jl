@@ -58,20 +58,21 @@ function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MH
 end
 
 
-function makedata(data, gpus::Vector{CuDevice}, FloatType, templatespergpu)
-    datatocorrelate = similar(gpus, MultiDeviceStream{FloatType})
-    for (n, g) in enumerate(gpus)
-        device!(g)
-        datatocorrelate[n] = g, Semaphore(templatespergpu), Dict(key => CuArray(FloatType.(series)) for (key, series) in data)
+function uploaddata(data, gpus::Vector{CuDevice}, FloatType, templatespergpu)
+    if isempty(gpus)
+        datatocorrelate = similar(gpus, MultiDeviceStream{FloatType})
+        for (n, g) in enumerate(gpus)
+            device!(g)
+            datatocorrelate[n] = g, Semaphore(templatespergpu), Dict(key => CuArray(FloatType.(series)) for (key, series) in data)
+        end
+        datatocorrelate
+    else
+        Dict(key => FloatType.(series) for (key, series) in data)
     end
-    datatocorrelate
 end
 
 
-makedata(data, gpus::Nothing, FloatType, templatespergpu) = Dict(key => FloatType.(series) for (key, series) in data)
-
-
-function correlate(data, template, offsets, tolerance, element_type; usefft=true)
+@inline function correlate(data, template, offsets, tolerance, element_type; usefft=true)
     channels = intersectkeys(data, template, offsets)
     data_vec = dict2array(data, channels)
     template_vec = dict2array(template, channels)
@@ -80,28 +81,36 @@ function correlate(data, template, offsets, tolerance, element_type; usefft=true
 end
 
 
-function computesignal(datatocorrelate::Vector{MultiDeviceStream{T}}, template, tolerance, FloatType) where {T <: AbstractFloat}
-    gpu, semaphore, cudata = datatocorrelate[Threads.threadid() % length(datatocorrelate) + 1]
-    acquire(semaphore)
-    try
-        device!(gpu)
-        cutemplate_data = Dict(key => CuArray(FloatType.(series)) for (key, series) in template.data)
-        cusignal = correlate(cudata, cutemplate_data, template.offsets, tolerance, FloatType)
-        let p = parent(cusignal)
-            p .= abs.(p .- median(p))
-            p ./= median(p)
+function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, tolerance) where {T <: AbstractFloat}
+    gpu, semaphore, cudata = devicedata[Threads.threadid() % length(devicedata) + 1]
+    signal = nothing
+    while isnothing(signal)
+        try
+            acquire(semaphore)
+            device!(gpu)
+            cutemplate_data = Dict(key => CuArray(T.(series)) for (key, series) in template.data)
+            cusignal = correlate(cudata, cutemplate_data, template.offsets, tolerance, T)
+            let p = parent(cusignal)
+                p .= abs.(p .- median(p))
+                p ./= median(p)
+            end
+            convert(OffsetVector{T, Vector{T}}, cusignal)
+        catch err
+            if isa(err, CuError)
+                @warn "An exception occurred while computing crosscorrelation." gpu err
+            else
+                throw(err)
+            end
+        finally
+            release(semaphore)
         end
-        convert(OffsetVector{FloatType, Vector{FloatType}}, cusignal)
-    catch e
-        throw(e)
-    finally
-        release(semaphore)
     end
+    signal
 end
 
 
-function computesignal(data::Dict{Int, Vector{T}}, template, tolerance, FloatType) where {T <: AbstractFloat}
-    signal = correlate(data, template.data, template.offsets, tolerance, FloatType)
+function computesignal(data::Dict{Int, Vector{T}}, template, tolerance) where {T <: AbstractFloat}
+    signal = correlate(data, template.data, template.offsets, tolerance, T)
     signal .= abs.(signal .- median(signal))
     signal ./= median(signal)
     signal
