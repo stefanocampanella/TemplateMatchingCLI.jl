@@ -60,14 +60,14 @@ end
 
 function uploaddata(data, gpus::Vector{CuDevice}, FloatType, templatespergpu)
     if isempty(gpus)
+        Dict(key => FloatType.(series) for (key, series) in data)
+    else
         datatocorrelate = similar(gpus, MultiDeviceStream{FloatType})
         for (n, g) in enumerate(gpus)
             device!(g)
             datatocorrelate[n] = g, Semaphore(templatespergpu), Dict(key => CuArray(FloatType.(series)) for (key, series) in data)
         end
         datatocorrelate
-    else
-        Dict(key => FloatType.(series) for (key, series) in data)
     end
 end
 
