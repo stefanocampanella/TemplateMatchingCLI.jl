@@ -151,7 +151,7 @@ match templates.
     end
     @info "Reading data from $datapath."
     data, freq = load(datapath, "data", "freq")
-    @info "Reading sensors coordinates from $sensorsspath."
+    @info "Reading sensors coordinates from $sensorspath."
     sensors = readsensorscoordinates(sensorspath)
     @info "Reading templates from $templatesspath."
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
