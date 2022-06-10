@@ -151,6 +151,7 @@ match templates.
     end
     @info "Reading data from $(realpath(datapath))."
     data, freq = load(datapath, "data", "freq")
+    @info "Found $(length(data)) traces for a total of $(Float64(sum(length, values(data)))) samples."
     @info "Reading sensors coordinates from $(realpath(sensorspath))."
     sensors = readsensorscoordinates(sensorspath)
     @info "Reading templates from $(realpath(templatespath))."
@@ -158,12 +159,13 @@ match templates.
     filter!(r -> !any(map(ismissing, r)), catalogue)
     batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
     templates = collectbatch(Tables.namedtupleiterator(catalogue), batch_number, total_batches)
-    @info "Computing cross-correlations and processing matches \
-           using $(Threads.nthreads()) threads and $(length(gpus)) GPUs."
+    @info "Found $(lentgh(templates)) templates (batch $batch_number of $total_batches)"
     FloatType = fpsize2fptype(precision)
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
     alldetections = Vector{Union{DataFrame, Missing}}(undef, length(templates))
     devicedata = uploaddata(data, gpus, FloatType, templatespergpu) 
+    @info "Computing cross-correlations and processing matches \
+           using $(Threads.nthreads()) threads and $(length(gpus)) GPUs."
     Threads.@threads for n in eachindex(templates)
         template = templates[n]
         signal = computesignal(devicedata, template, tol)
@@ -183,6 +185,7 @@ match templates.
         @info "No match found."
     else
         augmented_catalogue = reduce(vcat, actual_detections)
+        @info "Found $(nrow(augmented_catalogue)) matches."
         filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
         outputfilepath = joinpath(outputpath, filename)
         @info "Saving augmented catalogue at $outputfilepath."

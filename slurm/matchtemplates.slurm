@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=128
 #SBATCH --gres=gpu:4
-#SBATCH --output=logs/%A_%a.log
+#SBATCH --output=$CINECA_SCRATCH/Acoustic-Emissions/logs/%A_%a.log
 #SBATCH	--requeue 
 #SBATCH --verbose
 
