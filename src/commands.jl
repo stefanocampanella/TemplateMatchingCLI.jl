@@ -149,11 +149,11 @@ match templates.
     else
         @info "CUDA not functional, using CPU."
     end
-    @info "Reading data."
+    @info "Reading data from $datapath."
     data, freq = load(datapath, "data", "freq")
-    @info "Reading sensors coordinates."
+    @info "Reading sensors coordinates from $sensorsspath."
     sensors = readsensorscoordinates(sensorspath)
-    @info "Reading templates."
+    @info "Reading templates from $templatesspath."
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
     filter!(r -> !any(map(ismissing, r)), catalogue)
     batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
@@ -181,9 +181,10 @@ match templates.
     if isempty(actual_detections)
         @info "No match found."
     else
-        @info "Saving augmented catalogue."
         augmented_catalogue = reduce(vcat, actual_detections)
         filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
-        jldsave(joinpath(outputpath, filename); augmented_catalogue)
+        outputfilepath = joinpath(outputpath, filename)
+        @info "Saving augmented catalogue at $outputfilepath."
+        jldsave(outputfilepath; augmented_catalogue)
     end
 end
