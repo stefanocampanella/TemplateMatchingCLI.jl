@@ -149,16 +149,17 @@ match templates.
     else
         @info "CUDA not functional, using CPU."
     end
-    @info "Reading data from $datapath."
+    @info "Reading data from $(realpath(datapath))."
     data, freq = load(datapath, "data", "freq")
-    @info "Reading sensors coordinates from $sensorspath."
+    @info "Reading sensors coordinates from $(realpath(sensorspath))."
     sensors = readsensorscoordinates(sensorspath)
-    @info "Reading templates from $templatespath."
+    @info "Reading templates from $(realpath(templatespath))."
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
     filter!(r -> !any(map(ismissing, r)), catalogue)
     batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
     templates = collectbatch(Tables.namedtupleiterator(catalogue), batch_number, total_batches)
-    @info "Computing cross-correlations and processing matches."
+    @info "Computing cross-correlations and processing matches \ 
+           using $(Threads.nthreads()) threads and $(length(gpus)) GPUs."
     FloatType = fpsize2fptype(precision)
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
     alldetections = Vector{Union{DataFrame, Missing}}(undef, length(templates))
