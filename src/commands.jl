@@ -158,7 +158,7 @@ match templates.
     filter!(r -> !any(map(ismissing, r)), catalogue)
     batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
     templates = collectbatch(Tables.namedtupleiterator(catalogue), batch_number, total_batches)
-    @info "Computing cross-correlations and processing matches \ 
+    @info "Computing cross-correlations and processing matches \
            using $(Threads.nthreads()) threads and $(length(gpus)) GPUs."
     FloatType = fpsize2fptype(precision)
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
