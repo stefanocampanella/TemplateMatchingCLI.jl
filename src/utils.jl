@@ -94,7 +94,7 @@ function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, toler
                 p .= abs.(p .- median(p))
                 p ./= median(p)
             end
-            convert(OffsetVector{T, Vector{T}}, cusignal)
+            signal = convert(OffsetVector{T, Vector{T}}, cusignal)
         catch err
             if isa(err, CuError)
                 @warn "An exception occurred while computing crosscorrelation." gpu err
