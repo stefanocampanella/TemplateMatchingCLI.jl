@@ -172,9 +172,9 @@ match templates.
             alldetections[n] = missing
         else
             alldetections[n] = processdetections(data, template, sensors,
-                                                peaks, heights, 
-                                                window[1], freq, speed, 
-                                                tolerance, ccmin, nchmin)
+                                                 peaks, heights, 
+                                                 window[1], freq, speed, 
+                                                 tolerance, ccmin, nchmin)
         end
         next!(progressbar)
     end
