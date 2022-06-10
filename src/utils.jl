@@ -58,16 +58,16 @@ function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MH
 end
 
 
-function uploaddata(data, gpus::Vector{CuDevice}, FloatType, templatespergpu)
+function uploaddata(data::Stream{T}, gpus::Vector{CuDevice}, templatespergpu) where {T <: AbstractFloat}
     if isempty(gpus)
-        Dict(key => FloatType.(series) for (key, series) in data)
+        data
     else
-        datatocorrelate = similar(gpus, MultiDeviceStream{FloatType})
+        data_d = similar(gpus, MultiDeviceStream{T})
         for (n, g) in enumerate(gpus)
             device!(g)
-            datatocorrelate[n] = g, Semaphore(templatespergpu), Dict(key => CuArray(FloatType.(series)) for (key, series) in data)
+            data_d[n] = g, Semaphore(templatespergpu), Dict(key => CuArray(series) for (key, series) in data)
         end
-        datatocorrelate
+        data_d
     end
 end
 

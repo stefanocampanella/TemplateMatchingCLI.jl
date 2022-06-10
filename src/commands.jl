@@ -127,20 +127,19 @@ match templates.
 
 # Options
 
-- `--precision`: FP precision to use for computing crosscorrelations.
 - `--tolerance`: sample tolerance in stacking.
-- `--heightthreshold`: height threshold.
+- `--threshold`: height threshold.
 - `--distance`: minimum distance between peaks.
-- `--correlationthreshold`: correlation threshold.
+- `--ccmin`: correlation threshold.
 - `--nchmin`: minimum number of channels.
 - `--batches`: batch to process.
-- `--maxpeaks`: maximum number of detections to consider valid a template
+- `--npeaksmax`: maximum number of detections to consider valid a template
 - `--templatespergpu`: maximum number of templates to be processed simultaneously on a single device
 """
 @cast function matchtemplates(datapath::AbstractString, templatespath::AbstractString, 
                               sensorspath::AbstractString, outputpath::AbstractString; 
-                              precision::Int=16, threshold::Int=12, distance::Int=2, 
-                              ccmin::Float64=0.5, tol::Int=5, nchmin::Int=4,
+                              threshold::Int=12, distance::Int=2, 
+                              ccmin::Float64=0.5, tolerance::Int=8, nchmin::Int=4,
                               npeaksmax::Int=1024, templatespergpu::Int=1, batches::AbstractString="1/1")
     gpus = CuDevice[]
     if CUDA.functional()
@@ -160,15 +159,14 @@ match templates.
     batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
     templates = collectbatch(Tables.namedtupleiterator(catalogue), batch_number, total_batches)
     @info "Found $(length(templates)) templates (batch $batch_number of $total_batches)"
-    FloatType = fpsize2fptype(precision)
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
     alldetections = Vector{Union{DataFrame, Missing}}(undef, length(templates))
-    devicedata = uploaddata(data, gpus, FloatType, templatespergpu) 
+    devicedata = uploaddata(data, gpus, templatespergpu) 
     @info "Computing cross-correlations and processing matches \
            using $(Threads.nthreads()) threads and $(length(gpus)) GPUs."
     Threads.@threads for n in eachindex(templates)
         template = templates[n]
-        signal = computesignal(devicedata, template, tol)
+        signal = computesignal(devicedata, template, tolerance)
         peaks, heights = TemplateMatching.findpeaks(signal, threshold, distance * (window[2] - window[1]))
         if isempty(peaks) || length(peaks) > npeaksmax
             alldetections[n] = missing
@@ -176,7 +174,7 @@ match templates.
             alldetections[n] = processdetections(data, template, sensors,
                                                 peaks, heights, 
                                                 window[1], freq, speed, 
-                                                tol, ccmin, nchmin)
+                                                tolerance, ccmin, nchmin)
         end
         next!(progressbar)
     end
@@ -188,7 +186,7 @@ match templates.
         @info "Found $(nrow(augmented_catalogue)) matches."
         filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
         outputfilepath = joinpath(outputpath, filename)
-        @info "Saving augmented catalogue at $outputfilepath."
+        @info "Saving augmented catalogue at $(realpath(outputfilepath))."
         jldsave(outputfilepath; augmented_catalogue)
     end
 end
