@@ -153,7 +153,7 @@ match templates.
     data, freq = load(datapath, "data", "freq")
     @info "Reading sensors coordinates from $sensorspath."
     sensors = readsensorscoordinates(sensorspath)
-    @info "Reading templates from $templatesspath."
+    @info "Reading templates from $templatespath."
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
     filter!(r -> !any(map(ismissing, r)), catalogue)
     batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
