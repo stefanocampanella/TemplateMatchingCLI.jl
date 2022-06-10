@@ -159,7 +159,7 @@ match templates.
     filter!(r -> !any(map(ismissing, r)), catalogue)
     batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
     templates = collectbatch(Tables.namedtupleiterator(catalogue), batch_number, total_batches)
-    @info "Found $(lentgh(templates)) templates (batch $batch_number of $total_batches)"
+    @info "Found $(length(templates)) templates (batch $batch_number of $total_batches)"
     FloatType = fpsize2fptype(precision)
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
     alldetections = Vector{Union{DataFrame, Missing}}(undef, length(templates))
