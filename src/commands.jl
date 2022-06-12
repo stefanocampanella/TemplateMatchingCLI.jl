@@ -24,7 +24,7 @@ all in the same directory `inputdirpath`.
                           experiment::AbstractString, outputpath::AbstractString; 
                           precision::Int=32, freq::Int=10_000_000, 
                           lopassfreq::Int=50_000, hipassfreq::Int=300_000, 
-                          numpoles::Int=4, resamplefactor::Int=5, 
+                          numpoles::Int=4, resamplefactor::Int=10, 
                           exclude::AbstractString="")
     bad_channels = isempty(exclude) ? [] : map(s -> parse(Int, s), split(exclude, ","))
     @info "Reading files from $dirpath (experiment: $experiment, time: $datetime)..."
@@ -77,7 +77,7 @@ Cut templates.
 """
 @cast function maketemplates(datadirpath::AbstractString, experiment::AbstractString, sensorsxyzpath::AbstractString, 
                              cataloguepath::AbstractString, outputpath::AbstractString; 
-                             precision::Int=32, speed::Float64=0.67, window::Tuple{Int, Int}=(100, 500))
+                             precision::Int=32, speed::Float64=0.67, window::Tuple{Int, Int}=(50, 250))
     @info "Reading catalogue..."
     catalogue = readcatalogue(cataloguepath)
     @info "Reading sensors coordinates..."

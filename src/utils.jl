@@ -140,30 +140,26 @@ end
 
 function processdetection(data, template, sensors, peak, freq, delay, speed, tolerance, ccmin, nchmin)
     commonchannels = intersectkeys(data, template.data, template.offsets, sensors)
-    guess = [template.north, template.east, template.up, (peak + delay) / freq]
     subsample_estimates = Dict(key => TemplateMatching.estimatetoa(data[key], 
                                                                    template.data[key], 
                                                                    peak + template.offsets[key], 
                                                                    tolerance) 
                                for key in commonchannels)
     filter!(p -> p.second[2] > ccmin, subsample_estimates)
-    validchannels = collect(keys(subsample_estimates))
-    if length(validchannels) >= nchmin
-        sensors_vec = [sensors[key] for key in validchannels]
+    channels = collect(keys(subsample_estimates))
+    if length(channels) >= nchmin
+        sensors_vec = [sensors[key] for key in channels]
         toas = [(sample + delay) / freq for (sample, _) in values(subsample_estimates)]
+        guess = [template.north, template.east, template.up, (peak + delay) / freq]
         candidate = locate(vcat.(sensors_vec, toas), speed, guess)
         crosscorrelation = mean(cc for (_, cc) in values(subsample_estimates))
+        relative_magnitude = magnitude(data, template, peak, channels)
         if Optim.converged(candidate)
             north, east, up, origin_time = candidate.minimizer
             multilateration_residual = candidate.minimum
-            data_vec = [data[key] for key in validchannels]
-            template_vec = [template.data[key] for key in validchannels]
-            offsets_vec = [template.offsets[key] for key in validchannels]
-            relative_magnitude = TemplateMatching.magnitude(data_vec, template_vec, peak .+ offsets_vec)
         else
             north, east, up, origin_time = guess
             multilateration_residual = missing
-            relative_magnitude = missing
         end
     else
         north, east, up, origin_time = guess
@@ -171,5 +167,13 @@ function processdetection(data, template, sensors, peak, freq, delay, speed, tol
         crosscorrelation = missing
         relative_magnitude = missing
     end
-    (; north, east, up, origin_time, magnitude=template.magnitude + relative_magnitude, crosscorrelation, validchannels, multilateration_residual)
+    (; north, east, up, origin_time, magnitude=template.magnitude + relative_magnitude, crosscorrelation, channels, multilateration_residual)
+end
+
+
+function magnitude(data, template, peak, channels)
+    data_vec = [data[key] for key in channels]
+    template_vec = [template.data[key] for key in channels]
+    offsets_vec = [template.offsets[key] for key in channels]
+    TemplateMatching.magnitude(data_vec, template_vec, peak .+ offsets_vec)
 end
