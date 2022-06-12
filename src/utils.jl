@@ -117,7 +117,7 @@ function computesignal(data::Dict{Int, Vector{T}}, template, tolerance) where {T
 end
 
 
-function processdetections(data, template, sensors, peaks, heights, delay, freq, speed, tolerance, correlationthreshold, nchmin)
+function processdetections(data, template, sensors, peaks, heights, delay, freq, speed, tolerance, ccmin, nchmin)
     detections = DataFrame()
     detections.peak_sample = peaks .+ delay
     detections.peak_height = heights
@@ -127,27 +127,28 @@ function processdetections(data, template, sensors, peaks, heights, delay, freq,
         detectionsdata[k] = processdetection(data, 
                                              template, 
                                              sensors,
-                                             [template.north, template.east, template.up, (peaks[k] + delay) / freq],
+                                             peaks[k],
                                              freq,
                                              delay,
                                              speed,
                                              tolerance,
-                                             correlationthreshold, 
+                                             ccmin, 
                                              nchmin)
     end
     hcat(detections, DataFrame(detectionsdata))
 end
 
-function processdetection(data, template, sensors, guess, freq, delay, speed, tolerance, cc_threshold, nch_threshold)
+function processdetection(data, template, sensors, peak, freq, delay, speed, tolerance, ccmin, nchmin)
     commonchannels = intersectkeys(data, template.data, template.offsets, sensors)
+    guess = [template.north, template.east, template.up, (peak + delay) / freq]
     subsample_estimates = Dict(key => TemplateMatching.estimatetoa(data[key], 
                                                                    template.data[key], 
-                                                                   round(Int, guess[4] .+ template.offsets[key]), 
+                                                                   peak + template.offsets[key], 
                                                                    tolerance) 
                                for key in commonchannels)
-    filter!(p -> p.second[2] > cc_threshold, subsample_estimates)
+    filter!(p -> p.second[2] > ccmin, subsample_estimates)
     validchannels = collect(keys(subsample_estimates))
-    if length(validchannels) >= nch_threshold
+    if length(validchannels) >= nchmin
         sensors_vec = [sensors[key] for key in validchannels]
         toas = [(sample + delay) / freq for (sample, _) in values(subsample_estimates)]
         candidate = locate(vcat.(sensors_vec, toas), speed, guess)
@@ -158,7 +159,7 @@ function processdetection(data, template, sensors, guess, freq, delay, speed, to
             data_vec = [data[key] for key in validchannels]
             template_vec = [template.data[key] for key in validchannels]
             offsets_vec = [template.offsets[key] for key in validchannels]
-            relative_magnitude = TemplateMatching.magnitude(data_vec, template_vec, offsets_vec)
+            relative_magnitude = TemplateMatching.magnitude(data_vec, template_vec, peak .+ offsets_vec)
         else
             north, east, up, origin_time = guess
             multilateration_residual = missing

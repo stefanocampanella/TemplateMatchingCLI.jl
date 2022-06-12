@@ -9,6 +9,7 @@ using ProgressMeter
 using DSP
 using JLD2
 using DataFrames
+using LinearAlgebra
 using Tables
 using CUDA
 using Comonicon

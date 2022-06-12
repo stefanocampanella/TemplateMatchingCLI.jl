@@ -132,7 +132,7 @@ match templates.
 - `--distance`: minimum distance between peaks.
 - `--ccmin`: correlation threshold.
 - `--nchmin`: minimum number of channels.
-- `--batches`: batch to process.
+- `--batch`: batch to process.
 - `--npeaksmax`: maximum number of detections to consider valid a template
 - `--templatespergpu`: maximum number of templates to be processed simultaneously on a single device
 """
@@ -140,7 +140,7 @@ match templates.
                               sensorspath::AbstractString, outputpath::AbstractString; 
                               threshold::Int=12, distance::Int=2, 
                               ccmin::Float64=0.5, tolerance::Int=8, nchmin::Int=4,
-                              npeaksmax::Int=1024, templatespergpu::Int=1, batches::AbstractString="1/1")
+                              npeaksmax::Int=1024, templatespergpu::Int=1, batch::AbstractString="1/1")
     gpus = CuDevice[]
     if CUDA.functional()
         @info "CUDA detected and functional." CUDA.version() CUDA.devices()
@@ -156,7 +156,7 @@ match templates.
     @info "Reading templates from $(realpath(templatespath))."
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
     filter!(r -> !any(map(ismissing, r)), catalogue)
-    batch_number, total_batches = map(s -> parse(Int, s), split(batches, '/'))
+    batch_number, total_batches = map(s -> parse(Int, s), split(batch, '/'))
     templates = collectbatch(Tables.namedtupleiterator(catalogue), batch_number, total_batches)
     @info "Found $(length(templates)) templates (batch $batch_number of $total_batches)"
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
@@ -186,7 +186,7 @@ match templates.
         @info "Found $(nrow(augmented_catalogue)) matches."
         filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
         outputfilepath = joinpath(outputpath, filename)
-        @info "Saving augmented catalogue at $(realpath(outputfilepath))."
+        @info "Saving augmented catalogue at $outputfilepath." augmented_catalogue
         jldsave(outputfilepath; augmented_catalogue)
     end
 end
