@@ -95,6 +95,7 @@ function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, toler
                 p ./= median(p)
             end
             signal = convert(OffsetVector{T, Vector{T}}, cusignal)
+            CUDA.reclaim()
         catch err
             if err isa CuError
                 @warn "An exception occurred while computing cross-correlation." gpu err
@@ -147,10 +148,10 @@ function processdetection(data, template, sensors, peak, freq, delay, speed, tol
                                for key in commonchannels)
     filter!(p -> p.second[2] > ccmin, subsample_estimates)
     channels = collect(keys(subsample_estimates))
+    guess = [template.north, template.east, template.up, (peak + delay) / freq]
     if length(channels) >= nchmin
         sensors_vec = [sensors[key] for key in channels]
         toas = [(sample + delay) / freq for (sample, _) in values(subsample_estimates)]
-        guess = [template.north, template.east, template.up, (peak + delay) / freq]
         candidate = locate(vcat.(sensors_vec, toas), speed, guess)
         crosscorrelation = mean(cc for (_, cc) in values(subsample_estimates))
         relative_magnitude = magnitude(data, template, peak, channels)

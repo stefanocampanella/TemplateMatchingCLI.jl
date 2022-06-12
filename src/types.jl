@@ -17,6 +17,6 @@ TemplateMatchEventData = @NamedTuple begin
     origin_time::Float64
     magnitude::Union{Missing, Float64}
     crosscorrelation::Union{Missing, Float64}
-    validchannels::Vector{Int}
+    channels::Vector{Int}
     multilateration_residual::Union{Missing, Float64}
 end
