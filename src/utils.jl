@@ -88,6 +88,7 @@ function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, toler
     signal = nothing
     while isnothing(signal)
         try
+            CUDA.reclaim()
             cutemplate_data = Dict(key => CuArray(T.(series)) for (key, series) in template.data)
             cusignal = correlate(cudata, cutemplate_data, template.offsets, tolerance, T)
             let p = parent(cusignal)
@@ -99,7 +100,6 @@ function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, toler
             for series in values(cutemplate_data)
                 CUDA.unsafe_free!(series)
             end
-            CUDA.reclaim()
         catch err
             if err isa CuError
                 @warn "An exception occurred while computing cross-correlation." gpu err
