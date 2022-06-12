@@ -88,15 +88,13 @@ function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, toler
     signal = nothing
     while isnothing(signal)
         try
-            CUDA.reclaim()
             cutemplate_data = Dict(key => CuArray(T.(series)) for (key, series) in template.data)
             cusignal = correlate(cudata, cutemplate_data, template.offsets, tolerance, T)
-            let p = parent(cusignal)
-                p .= abs.(p .- median(p))
-                p ./= median(p)
-            end
+            cusignal_p = parent(cusignal)
+            cusignal_p .= abs.(cusignal_p .- median(cusignal_p))
+            cusignal_p ./= median(cusignal_p)
             signal = convert(OffsetVector{T, Vector{T}}, cusignal)
-            CUDA.unsafe_free!(parent(cusignal))
+            CUDA.unsafe_free!(cusignal_p)
             for series in values(cutemplate_data)
                 CUDA.unsafe_free!(series)
             end
