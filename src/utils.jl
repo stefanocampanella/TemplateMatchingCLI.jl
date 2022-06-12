@@ -95,7 +95,10 @@ function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, toler
                 p ./= median(p)
             end
             signal = convert(OffsetVector{T, Vector{T}}, cusignal)
-            CUDA.reclaim()
+            CUDA.unsafe_free!(parent(cusignal))
+            for series in values(cutemplate_data)
+                CUDA.unsafe_free!(series)
+            end
         catch err
             if err isa CuError
                 @warn "An exception occurred while computing cross-correlation." gpu err
