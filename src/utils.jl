@@ -99,6 +99,7 @@ function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, toler
             for series in values(cutemplate_data)
                 CUDA.unsafe_free!(series)
             end
+            CUDA.reclaim()
         catch err
             if err isa CuError
                 @warn "An exception occurred while computing cross-correlation." gpu err
