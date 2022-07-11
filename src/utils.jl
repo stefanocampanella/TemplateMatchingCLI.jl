@@ -98,28 +98,19 @@ function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, toler
     gpu, semaphore, cudata = devicedata[template.index % length(devicedata) + 1]
     device!(gpu)
     acquire(semaphore)
-    signal = nothing
-    while isnothing(signal)
-        try
-            cutemplate_data = Dict(key => CuArray(T.(series)) for (key, series) in template.data)
-            cusignal = correlatetemplate(cudata, cutemplate_data, template.offsets, tolerance, T)
-            cusignal_p = parent(cusignal)
-            cusignal_p .= abs.(cusignal_p .- median(cusignal_p))
-            cusignal_p ./= median(cusignal_p)
-            signal = convert(OffsetVector{T, Vector{T}}, cusignal)
-            CUDA.unsafe_free!(cusignal_p)
-            for series in values(cutemplate_data)
-                CUDA.unsafe_free!(series)
-            end
-        catch err
-            if err isa CuError
-                @warn "An exception occurred while computing cross-correlation." gpu err
-            else
-                throw(err)
-            end
-        finally
-            release(semaphore)
+    try
+        cutemplate_data = Dict(key => CuArray(T.(series)) for (key, series) in template.data)
+        cusignal = correlatetemplate(cudata, cutemplate_data, template.offsets, tolerance, T)
+        cusignal_p = parent(cusignal)
+        cusignal_p .= abs.(cusignal_p .- median(cusignal_p))
+        cusignal_p ./= median(cusignal_p)
+        signal = convert(OffsetVector{T, Vector{T}}, cusignal)
+        CUDA.unsafe_free!(cusignal_p)
+        for series in values(cutemplate_data)
+            CUDA.unsafe_free!(series)
         end
+    finally
+        release(semaphore)
     end
     signal
 end
