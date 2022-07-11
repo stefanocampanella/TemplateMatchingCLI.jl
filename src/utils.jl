@@ -7,9 +7,6 @@ zipdicts(dicts...) = Dict(key => tuple((d[key] for d in dicts)...) for key in in
 intersectkeys(dicts...) = Base.splat(collect ∘ intersect)(map(keys, dicts)) 
 
 
-collectbatch(xs, k, N) = N > 1 ? [x for (n, x) in enumerate(xs) if mod(n, N) == k] : collect(xs)
-
-
 dict2array(d, keys) = [d[key] for key in keys]
 
 
@@ -72,24 +69,40 @@ function uploaddata(data::Stream{T}, gpus::Vector{CuDevice}, templatespergpu) wh
 end
 
 
-@inline function correlate(data, template, offsets, tolerance, element_type; usefft=true)
-    channels = intersectkeys(data, template, offsets)
-    data_vec = dict2array(data, channels)
-    template_vec = dict2array(template, channels)
-    offsets_vec = dict2array(offsets, channels)
-    TemplateMatching.correlatetemplate(data_vec, template_vec, offsets_vec, tolerance, element_type, usefft=usefft)
+function gettemplates!(templates_chnl, catalogue, batch_number, total_batches)
+    catalogue_nonmissing = filter(r -> !any(map(ismissing, r)), catalogue)
+    templates_itr = Tables.namedtupleiterator(catalogue_nonmissing)
+    # progressbar = Progress(nrow(catalogue_nonmissing); output=stderr, enabled=!is_logging(stderr), showspeed=true)
+    for template in collectbatch(templates_itr, batch_number, total_batches)
+        put!(templates_chnl, template)
+        # next!(progressbar)
+    end
+end
+
+
+@inline collectbatch(xs, k, N) = N > 1 ? (x for (n, x) in enumerate(xs) if mod(n, N) == k) : xs
+
+
+function detect!(peaks_chnl, templates_chnl, data, tolerance, threshold, distance, npeaksmax)
+    for template in templates_chnl
+        signal = computesignal(data, template, tolerance)
+        peaks, heights = TemplateMatching.findpeaks(signal, threshold, distance)
+        if !(isempty(peaks) || length(peaks) > npeaksmax)
+            put!(peaks_chnl, (template, peaks, heights))
+        end
+    end
 end
 
 
 function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, tolerance) where {T <: AbstractFloat}
-    gpu, semaphore, cudata = devicedata[Threads.threadid() % length(devicedata) + 1]
+    gpu, semaphore, cudata = devicedata[template.index % length(devicedata) + 1]
     device!(gpu)
     acquire(semaphore)
     signal = nothing
     while isnothing(signal)
         try
             cutemplate_data = Dict(key => CuArray(T.(series)) for (key, series) in template.data)
-            cusignal = correlate(cudata, cutemplate_data, template.offsets, tolerance, T)
+            cusignal = correlatetemplate(cudata, cutemplate_data, template.offsets, tolerance, T)
             cusignal_p = parent(cusignal)
             cusignal_p .= abs.(cusignal_p .- median(cusignal_p))
             cusignal_p ./= median(cusignal_p)
@@ -98,7 +111,6 @@ function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, toler
             for series in values(cutemplate_data)
                 CUDA.unsafe_free!(series)
             end
-            GC.gc()
         catch err
             if err isa CuError
                 @warn "An exception occurred while computing cross-correlation." gpu err
@@ -114,33 +126,47 @@ end
 
 
 function computesignal(data::Dict{Int, Vector{T}}, template, tolerance) where {T <: AbstractFloat}
-    signal = correlate(data, template.data, template.offsets, tolerance, T)
+    signal = correlatetemplate(data, template.data, template.offsets, tolerance, T)
     signal .= abs.(signal .- median(signal))
     signal ./= median(signal)
     signal
 end
 
 
-function processdetections(data, template, sensors, peaks, heights, delay, freq, speed, tolerance, ccmin, nchmin)
-    detections = DataFrame()
-    detections.peak_sample = peaks .+ delay
-    detections.peak_height = heights
-    detections.template .= template.index
-    detectionsdata = Vector{TemplateMatchEventData}(undef, length(peaks))
-    Threads.@threads for k in eachindex(detectionsdata)
-        detectionsdata[k] = processdetection(data, 
-                                             template, 
-                                             sensors,
-                                             peaks[k],
-                                             freq,
-                                             delay,
-                                             speed,
-                                             tolerance,
-                                             ccmin, 
-                                             nchmin)
-    end
-    hcat(detections, DataFrame(detectionsdata))
+@inline function correlatetemplate(data, template, offsets, tolerance, element_type; usefft=true)
+    channels = intersectkeys(data, template, offsets)
+    data_vec = dict2array(data, channels)
+    template_vec = dict2array(template, channels)
+    offsets_vec = dict2array(offsets, channels)
+    TemplateMatching.correlatetemplate(data_vec, template_vec, offsets_vec, tolerance, element_type, usefft=usefft)
 end
+
+
+function process!(detections_chnl, peaks_chnl, data, sensors, delay, freq, speed, tolerance, ccmin, nchmin)
+    for (template, peaks, heights) in peaks_chnl
+        detections = DataFrame()
+        detections.peak_sample = peaks .+ delay
+        detections.peak_height = heights
+        detections.template .= template.index
+        detectionsdata = Vector{TemplateMatchEventData}(undef, length(peaks))
+        Threads.@threads for k in eachindex(detectionsdata)
+            detectionsdata[k] = processdetection(data, 
+                                                 template, 
+                                                 sensors,
+                                                 peaks[k],
+                                                 freq,
+                                                 delay,
+                                                 speed,
+                                                 tolerance,
+                                                 ccmin, 
+                                                 nchmin)
+        end
+        if !isempty(detections)
+            put!(detections_chnl, hcat(detections, DataFrame(detectionsdata)))
+        end
+    end
+end
+
 
 function processdetection(data, template, sensors, peak, freq, delay, speed, tolerance, ccmin, nchmin)
     commonchannels = intersectkeys(data, template.data, template.offsets, sensors)
@@ -180,4 +206,19 @@ function magnitude(data, template, peak, channels)
     template_vec = [template.data[key] for key in channels]
     offsets_vec = [template.offsets[key] for key in channels]
     TemplateMatching.magnitude(data_vec, template_vec, peak .+ offsets_vec)
+end
+
+
+function store!(detections_chnl, datapath, templatespath, outputpath, total_batches, batch_number)
+    detections = collect(detections_chnl)
+    if isempty(detections)
+        @info "No match found."
+    else
+        augmented_catalogue = reduce(vcat, detections)
+        @info "Found $(nrow(augmented_catalogue)) matches."
+        filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
+        outputfilepath = joinpath(outputpath, filename)
+        @info "Saving augmented catalogue at $outputfilepath." augmented_catalogue
+        jldsave(outputfilepath; augmented_catalogue)
+    end
 end

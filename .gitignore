@@ -7,4 +7,5 @@
 **/*.log
 .vscode
 scratch
+data
 **/*.code-workspace

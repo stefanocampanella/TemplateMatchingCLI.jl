@@ -155,38 +155,13 @@ match templates.
     sensors = readsensorscoordinates(sensorspath)
     @info "Reading templates from $(realpath(templatespath))."
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
-    filter!(r -> !any(map(ismissing, r)), catalogue)
     batch_number, total_batches = map(s -> parse(Int, s), split(batch, '/'))
-    templates = collectbatch(Tables.namedtupleiterator(catalogue), batch_number, total_batches)
-    @info "Found $(length(templates)) templates (batch $batch_number of $total_batches)"
-    progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr))
-    alldetections = Vector{Union{DataFrame, Missing}}(undef, length(templates))
-    devicedata = uploaddata(data, gpus, templatespergpu) 
+    @info "Found $(nrow(catalogue)) templates in catalogue, computing batch $batch_number of $total_batches."
     @info "Computing cross-correlations and processing matches \
            using $(Threads.nthreads()) threads and $(length(gpus)) GPUs."
-    Threads.@threads for n in eachindex(templates)
-        template = templates[n]
-        signal = computesignal(devicedata, template, tolerance)
-        peaks, heights = TemplateMatching.findpeaks(signal, threshold, distance * (window[2] - window[1]))
-        if isempty(peaks) || length(peaks) > npeaksmax
-            alldetections[n] = missing
-        else
-            alldetections[n] = processdetections(data, template, sensors,
-                                                 peaks, heights, 
-                                                 window[1], freq, speed, 
-                                                 tolerance, ccmin, nchmin)
-        end
-        next!(progressbar)
-    end
-    actual_detections =  skipmissing(alldetections)
-    if isempty(actual_detections)
-        @info "No match found."
-    else
-        augmented_catalogue = reduce(vcat, actual_detections)
-        @info "Found $(nrow(augmented_catalogue)) matches."
-        filename = join(map(basename ∘ first ∘ splitext, [datapath, templatespath]), "_") * (total_batches > 1 ? "_$batch_number" : "") * ".jld2"
-        outputfilepath = joinpath(outputpath, filename)
-        @info "Saving augmented catalogue at $outputfilepath." augmented_catalogue
-        jldsave(outputfilepath; augmented_catalogue)
-    end
+    devicedata = uploaddata(data, gpus, templatespergpu) 
+    templates_chnl = Channel(c -> gettemplates!(c, catalogue, batch_number, total_batches))
+    peaks_chnl = Channel(c -> detect!(c, templates_chnl, devicedata, tolerance, threshold, distance * (window[2] - window[1]), npeaksmax))
+    detections_chnl = Channel(c -> process!(c, peaks_chnl, data, sensors, window[1], freq, speed, tolerance, ccmin, nchmin))
+    wait(@async store!(detections_chnl, datapath, templatespath, outputpath, total_batches, batch_number))
 end
