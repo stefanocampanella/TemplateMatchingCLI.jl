@@ -98,6 +98,7 @@ function computesignal(devicedata::Vector{MultiDeviceStream{T}}, template, toler
     gpu, semaphore, cudata = devicedata[template.index % length(devicedata) + 1]
     device!(gpu)
     acquire(semaphore)
+    signal = nothing
     try
         cutemplate_data = Dict(key => CuArray(T.(series)) for (key, series) in template.data)
         cusignal = correlatetemplate(cudata, cutemplate_data, template.offsets, tolerance, T)
@@ -200,8 +201,7 @@ function magnitude(data, template, peak, channels)
 end
 
 
-function store!(detections_chnl, datapath, templatespath, outputpath, total_batches, batch_number)
-    detections = collect(detections_chnl)
+function store(detections, datapath, templatespath, outputpath, total_batches, batch_number)
     if isempty(detections)
         @info "No match found."
     else

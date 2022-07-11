@@ -163,5 +163,5 @@ match templates.
     templates_chnl = Channel(c -> gettemplates!(c, catalogue, batch_number, total_batches))
     peaks_chnl = Channel(c -> detect!(c, templates_chnl, devicedata, tolerance, threshold, distance * (window[2] - window[1]), npeaksmax))
     detections_chnl = Channel(c -> process!(c, peaks_chnl, data, sensors, window[1], freq, speed, tolerance, ccmin, nchmin))
-    wait(@async store!(detections_chnl, datapath, templatespath, outputpath, total_batches, batch_number))
+    store(collect(detections_chnl), datapath, templatespath, outputpath, total_batches, batch_number)
 end
