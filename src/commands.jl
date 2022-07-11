@@ -161,9 +161,11 @@ match templates.
            using $(Threads.nthreads()) threads and $(length(gpus)) GPUs."
     devicedata = uploaddata(data, gpus, templatespergpu) 
     templates_chnl = Channel(c -> gettemplates!(c, catalogue, batch_number, total_batches))
+    peaks_chnl = nothing
     if isempty(gpus)
         peaks_chnl = Channel(c -> detect!(c, templates_chnl, devicedata, tolerance, threshold, distance * (window[2] - window[1]), npeaksmax))
     else
+        peaks_chnl = Channel()
         for _ in gpus
             for _ in 1:templatespergpu
                 t = Threads.@spawn detect!(peaks_chnl, templates_chnl, devicedata, tolerance, threshold, distance * (window[2] - window[1]), npeaksmax)
