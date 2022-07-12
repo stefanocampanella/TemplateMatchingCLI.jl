@@ -161,17 +161,10 @@ match templates.
            using $(Threads.nthreads()) threads and $(length(gpus)) GPUs."
     devicedata = uploaddata(data, gpus, templatespergpu) 
     templates_chnl = Channel(c -> gettemplates!(c, catalogue, batch_number, total_batches))
-    peaks_chnl = nothing
-    if isempty(gpus)
-        peaks_chnl = Channel(c -> detect!(c, templates_chnl, devicedata, tolerance, threshold, distance * (window[2] - window[1]), npeaksmax))
-    else
-        peaks_chnl = Channel()
-        for _ in gpus
-            for _ in 1:templatespergpu
-                t = Threads.@spawn detect!(peaks_chnl, templates_chnl, devicedata, tolerance, threshold, distance * (window[2] - window[1]), npeaksmax)
-                bind(peaks_chnl, t)
-            end
-        end
+    peaks_chnl = Channel()
+    for _ = 1:max(1, length(gpus) * templatespergpu)
+        t = Threads.@spawn detect!(peaks_chnl, templates_chnl, devicedata, tolerance, threshold, distance * (window[2] - window[1]), npeaksmax)
+        errormonitor(t)
     end
     detections_chnl = Channel(c -> process!(c, peaks_chnl, data, sensors, window[1], freq, speed, tolerance, ccmin, nchmin))
     store(collect(detections_chnl), datapath, templatespath, outputpath, total_batches, batch_number)
