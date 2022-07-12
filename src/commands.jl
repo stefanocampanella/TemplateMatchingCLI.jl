@@ -57,7 +57,6 @@ all in the same directory `inputdirpath`.
     end
 end
 
-
 """
 Cut templates.
 
@@ -114,7 +113,6 @@ Cut templates.
     jldsave(joinpath(outputpath, "$experiment.jld2"); catalogue, speed, window)
 end
 
-
 """
 match templates.
 
@@ -132,40 +130,35 @@ match templates.
 - `--distance`: minimum distance between peaks.
 - `--ccmin`: correlation threshold.
 - `--nchmin`: minimum number of channels.
-- `--batch`: batch to process.
 - `--npeaksmax`: maximum number of detections to consider valid a template
-- `--templatespergpu`: maximum number of templates to be processed simultaneously on a single device
 """
 @cast function matchtemplates(datapath::AbstractString, templatespath::AbstractString, 
                               sensorspath::AbstractString, outputpath::AbstractString; 
                               threshold::Int=12, distance::Int=2, 
                               ccmin::Float64=0.5, tolerance::Int=8, nchmin::Int=4,
-                              npeaksmax::Int=1024, templatespergpu::Int=2, batch::AbstractString="1/1")
-    gpus = CuDevice[]
-    if CUDA.functional()
-        @info "CUDA detected and functional." CUDA.version() CUDA.devices()
-        append!(gpus, CUDA.devices())
-    else
-        @info "CUDA not functional, using CPU."
-    end
-    @info "Reading data from $(realpath(datapath))."
+                              npeaksmax::Int=1024)
+    @info "Reading data from $(realpath(datapath))"
     data, freq = load(datapath, "data", "freq")
-    @info "Found $(length(data)) traces for a total of $(Float64(sum(length, values(data)))) samples."
-    @info "Reading sensors coordinates from $(realpath(sensorspath))."
+    @info "Reading sensors coordinates from $(realpath(sensorspath))"
     sensors = readsensorscoordinates(sensorspath)
-    @info "Reading templates from $(realpath(templatespath))."
+    @info "Reading templates from $(realpath(templatespath))"
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
-    batch_number, total_batches = map(s -> parse(Int, s), split(batch, '/'))
-    @info "Found $(nrow(catalogue)) templates in catalogue, computing batch $batch_number of $total_batches."
-    @info "Computing cross-correlations and processing matches \
-           using $(Threads.nthreads()) threads and $(length(gpus)) GPUs."
-    devicedata = uploaddata(data, gpus, templatespergpu) 
-    templates_chnl = Channel(c -> gettemplates!(c, catalogue, batch_number, total_batches))
-    peaks_chnl = Channel()
-    for _ = 1:max(1, length(gpus) * templatespergpu)
-        t = Threads.@spawn detect!(peaks_chnl, templates_chnl, devicedata, tolerance, threshold, distance * (window[2] - window[1]), npeaksmax)
-        errormonitor(t)
+    filter!(r -> !any(map(ismissing, r)), catalogue)
+    @info "Computing cross-correlations and processing matches"
+    if CUDA.functional()
+        @info "GPU acceleration available" CUDA.version()
+        iscudafunctional = true
+    else
+        @info "GPU acceleration not available"
+        iscudafunctional = false
     end
-    detections_chnl = Channel(c -> process!(c, peaks_chnl, data, sensors, window[1], freq, speed, tolerance, ccmin, nchmin))
-    store(collect(detections_chnl), datapath, templatespath, outputpath, total_batches, batch_number)
+    templates_chnl = Channel(chnl -> gettemplates!(chnl, catalogue))
+    peaks_chnl = Channel(chnl -> detect!(chnl, 
+                                         templates_chnl, 
+                                         data, tolerance, threshold, distance * (window[2] - window[1]), 
+                                         npeaksmax; iscudafunctional))
+    detections_chnl = Channel(chnl -> process!(chnl, 
+                                               peaks_chnl, data, sensors, 
+                                               window[1], freq, speed, tolerance, ccmin, nchmin))
+    store(collect(detections_chnl), outputpath)
 end
