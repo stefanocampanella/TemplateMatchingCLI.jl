@@ -103,14 +103,14 @@ function processdetection(data, template, sensors, peak, freq, delay, speed, tol
                                                                    tolerance) 
                                for key in commonchannels)
     filter!(p -> p.second[2] > ccmin, subsample_estimates)
-    validchannels = collect(keys(subsample_estimates))
+    channels = collect(keys(subsample_estimates))
     guess = [template.north, template.east, template.up, (peak + delay) / freq]
-    if length(validchannels) >= nchmin
-        sensors_vec = [sensors[key] for key in validchannels]
+    if length(channels) >= nchmin
+        sensors_vec = [sensors[key] for key in channels]
         toas = [(sample + delay) / freq for (sample, _) in values(subsample_estimates)]
         candidate = locate(vcat.(sensors_vec, toas), speed, guess)
         crosscorrelation = mean(cc for (_, cc) in values(subsample_estimates))
-        relative_magnitude = magnitude(data, template, peak, validchannels)
+        relative_magnitude = magnitude(data, template, peak, channels)
         if Optim.converged(candidate)
             north, east, up, origin_time = candidate.minimizer
             multilateration_residual = candidate.minimum
@@ -124,7 +124,7 @@ function processdetection(data, template, sensors, peak, freq, delay, speed, tol
         crosscorrelation = missing
         relative_magnitude = missing
     end
-    (; north, east, up, origin_time, magnitude=template.magnitude + relative_magnitude, crosscorrelation, validchannels, multilateration_residual)
+    (; north, east, up, origin_time, magnitude=template.magnitude + relative_magnitude, crosscorrelation, channels, multilateration_residual)
 end
 
 locate(sensors_readings_itr, v, guess) = optimize(xt -> residue_rms(xt, sensors_readings_itr, v), guess)
