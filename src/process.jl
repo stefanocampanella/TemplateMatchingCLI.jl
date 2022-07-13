@@ -26,7 +26,7 @@ function processdetection(data, template, sensors, starttime, peak, freq, head_l
     channels = collect(keys(subsample_estimates))
     guess = [template.north, template.east, template.up, (peak + head_len) / freq]
     if length(channels) >= nchmin
-        sensors_vec = [sensors[key] for key in channels]
+        sensors_vec = dict2array(sensors, channels)
         toas = [(sample + head_len) / freq for (sample, _) in values(subsample_estimates)]
         candidate = locate(vcat.(sensors_vec, toas), speed, guess)
         crosscorrelation = mean(cc for (_, cc) in values(subsample_estimates))

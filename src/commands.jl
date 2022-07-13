@@ -13,9 +13,9 @@ all in the same directory `inputdirpath`.
 # Options
 
 - `-p, --precision`: FP precision to use for computation and storage.
-- `-f, --freq`: original sampling frequency.
-- `-l, --lopassfreq`: lower frequency in bandpass filter.
-- `-h, --hipassfreq`: higher frequency in bandpass filter.
+- `-f, --freq`: original sampling frequency in Hz.
+- `-l, --lopassfreq`: lower frequency in bandpass filter in Hz.
+- `-h, --hipassfreq`: higher frequency in bandpass filter in Hz.
 - `-n, --numpoles`: number of poles in Butterworth filter.
 - `-r, --resamplefactor`: resampling factor.
 - `-e, --exclude`: channels to exclude.
@@ -63,13 +63,13 @@ Cut templates.
 # Arguments
 
 - `datadirpath`: path of the directory of JLD2 data files.
-- `sensorsxyzpath`: path of the CSV containing sensors coordinates.
+- `sensorsxyzpath`: path of the CSV containing sensors coordinates in cm.
 - `cataloguepath`: path of the CSV catalogue of templates.
 - `outputpath`: path of the output file.
 
 # Options
 
-- `-p, --precision`: FP precision to use for template storage.
+- `-p, --precision`: FP size in bits,  precision to use for template storage.
 - `-s, --speed`: P-wave speed in cm/us.
 - `-w, --window`: template window in samples.
 """
@@ -90,7 +90,7 @@ Cut templates.
         data, starttime, endtime, freq = load(datapath, "data", "starttime", "endtime", "freq")
         starttime_us = DateTimeMicrosecond(starttime)
         endtime_us = DateTimeMicrosecond(endtime)
-        freq_MHz = round(Int, 1e-6 * freq)
+        freq_MHz = 1e-6freq
         templates_within_data = filter(r -> starttime_us <= r.datetime < endtime_us, catalogue)
         for template in eachrow(templates_within_data)
             template_data, offsets = cuttemplate(
@@ -114,7 +114,7 @@ Match templates.
 
 - `datapath`: path of continuous data.
 - `templatespath`: path of the directory of JLD2 data files.
-- `sensorsxyzpath`: path of the CSV containing sensors coordinates.
+- `sensorsxyzpath`: path of the CSV containing sensors coordinates in cm.
 - `outputpath`: path of the output file.
 
 # Options
@@ -133,6 +133,7 @@ Match templates.
     @info "Reading data from $(realpath(datapath))"
     data, starttime, freq = load(datapath, "data", "starttime", "freq")
     starttime_us = DateTimeMicrosecond(starttime)
+    freq_MHz = 1e-6freq
     @info "Reading sensors coordinates from $(realpath(sensorspath))"
     sensors = readsensorscoordinates(sensorspath)
     @info "Reading templates from $(realpath(templatespath))"
@@ -157,6 +158,6 @@ Match templates.
         chnl -> process!(
             chnl, 
             peaks_chnl, data, sensors, starttime_us,
-            head_len, freq, speed, tolerance, ccmin, nchmin))
+            head_len, freq_MHz, speed, tolerance, ccmin, nchmin))
     store(collect(detections_chnl), outputpath)
 end
