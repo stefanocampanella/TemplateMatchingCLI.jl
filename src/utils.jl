@@ -14,7 +14,7 @@ end
 function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MHz, speed, window, eltype)
     originsample = round(Int, freq_MHz * (template.datetime - data_starttime).value)
     templatecoordinates = Vector(template[[:north, :east, :up]])
-    pre, post = window
+    head_len, tail_len = window
     templatedata = Stream{eltype}() 
     templateoffsets = Offsets()
     for (channel, (series, sensorcoordinates)) in zipdicts(data, sensorscoordinates)
@@ -22,7 +22,7 @@ function cuttemplate(data, sensorscoordinates, template, data_starttime, freq_MH
         distance = Base.splat(hypot)(displacement)
         offset = round(Int, freq_MHz * (distance / speed))
         arrivalsample = originsample + offset
-        templatedata[channel] = series[arrivalsample - pre: arrivalsample + post]
+        templatedata[channel] = series[arrivalsample - head_len: arrivalsample + tail_len]
         templateoffsets[channel] = offset
     end
     templatedata, templateoffsets
@@ -32,25 +32,20 @@ zipdicts(dicts...) = Dict(key => tuple((d[key] for d in dicts)...) for key in in
 
 intersectkeys(dicts...) = Base.splat(collect ∘ intersect)(map(keys, dicts)) 
 
-function gettemplates!(templates_chnl, catalogue)
-    progressbar = Progress(nrow(catalogue); output=stderr, enabled=!is_logging(stderr), showspeed=true)
-    for template in Tables.namedtupleiterator(catalogue)
-        put!(templates_chnl, template)
+function detect!(peaks_chnl, data, templates, tolerance, threshold, rel_distance, npeaksmax; iscudafunctional=false)
+    progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr), showspeed=true)
+    for template in templates
+        signal = computesignal(data, template, tolerance; iscudafunctional)
+        distance = rel_distance * max(length, template.data)
+        peaks, heights = TemplateMatching.findpeaks(signal, threshold, distance)
+        if !(isempty(peaks) || length(peaks) > npeaksmax)
+            put!(peaks_chnl, (template, peaks, heights))
+        end
         next!(progressbar)
     end
 end
 
 is_logging(io) = isa(io, Base.TTY) == false || (get(ENV, "CI", nothing) == "true")
-
-function detect!(peaks_chnl, templates_chnl, data, tolerance, threshold, distance, npeaksmax; iscudafunctional=false)
-    for template in templates_chnl
-        signal = computesignal(data, template, tolerance; iscudafunctional)
-        peaks, heights = TemplateMatching.findpeaks(signal, threshold, distance)
-        if !(isempty(peaks) || length(peaks) > npeaksmax)
-            put!(peaks_chnl, (template, peaks, heights))
-        end
-    end
-end
 
 function computesignal(data::Stream{T}, template, tolerance; iscudafunctional=false):: OffsetVector{T, Vector{T}} where {T <: AbstractFloat} 
     channels = intersectkeys(data, template.data, template.offsets)
@@ -95,7 +90,7 @@ function process!(detections_chnl, peaks_chnl, data, sensors, delay, freq, speed
     end
 end
 
-function processdetection(data, template, sensors, peak, freq, delay, speed, tolerance, ccmin, nchmin)
+function processdetection(data, template, sensors, peak, freq, head_len, speed, tolerance, ccmin, nchmin)
     commonchannels = intersectkeys(data, template.data, template.offsets, sensors)
     subsample_estimates = Dict(key => TemplateMatching.estimatetoa(data[key], 
                                                                    template.data[key], 
@@ -104,10 +99,10 @@ function processdetection(data, template, sensors, peak, freq, delay, speed, tol
                                for key in commonchannels)
     filter!(p -> p.second[2] > ccmin, subsample_estimates)
     channels = collect(keys(subsample_estimates))
-    guess = [template.north, template.east, template.up, (peak + delay) / freq]
+    guess = [template.north, template.east, template.up, (peak + head_len) / freq]
     if length(channels) >= nchmin
         sensors_vec = [sensors[key] for key in channels]
-        toas = [(sample + delay) / freq for (sample, _) in values(subsample_estimates)]
+        toas = [(sample + head_len) / freq for (sample, _) in values(subsample_estimates)]
         candidate = locate(vcat.(sensors_vec, toas), speed, guess)
         crosscorrelation = mean(cc for (_, cc) in values(subsample_estimates))
         relative_magnitude = magnitude(data, template, peak, channels)

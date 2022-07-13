@@ -143,6 +143,7 @@ match templates.
     sensors = readsensorscoordinates(sensorspath)
     @info "Reading templates from $(realpath(templatespath))"
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
+    head_len, _ = window
     filter!(r -> !any(map(ismissing, r)), catalogue)
     @info "Computing cross-correlations and processing matches"
     if CUDA.functional()
@@ -152,13 +153,17 @@ match templates.
         @info "GPU acceleration not available"
         iscudafunctional = false
     end
-    templates_chnl = Channel(chnl -> gettemplates!(chnl, catalogue))
-    peaks_chnl = Channel(chnl -> detect!(chnl, 
-                                         templates_chnl, 
-                                         data, tolerance, threshold, distance * (window[2] - window[1]), 
-                                         npeaksmax; iscudafunctional))
-    detections_chnl = Channel(chnl -> process!(chnl, 
-                                               peaks_chnl, data, sensors, 
-                                               window[1], freq, speed, tolerance, ccmin, nchmin))
+    templates = Tables.namedtupleiterator(catalogue)
+    peaks_chnl = Channel{Tuple{eltype(templates), Vector{Int}, Vector{valtype(data)}}}(
+        chnl -> detect!(
+            chnl, 
+            data, templates, 
+            tolerance, threshold, distance, npeaksmax; 
+            iscudafunctional))
+    detections_chnl = Channel{DataFrame}(
+        chnl -> process!(
+            chnl, 
+            peaks_chnl, data, sensors, 
+            head_len, freq, speed, tolerance, ccmin, nchmin))
     store(collect(detections_chnl), outputpath)
 end
