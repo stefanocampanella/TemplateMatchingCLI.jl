@@ -6,16 +6,9 @@ function process!(detections_chnl, peaks_chnl, data, sensors, head_len, freq, sp
         detections.template .= template.index
         detectionsdata = Vector{TemplateMatchEventData}(undef, length(peaks))
         Threads.@threads for k in eachindex(detectionsdata)
-            detectionsdata[k] = processdetection(data, 
-                                                 template, 
-                                                 sensors,
-                                                 peaks[k],
-                                                 freq,
-                                                 head_len,
-                                                 speed,
-                                                 tolerance,
-                                                 ccmin, 
-                                                 nchmin)
+            detectionsdata[k] = processdetection(
+                data, template, sensors, peaks[k],
+                freq, head_len, speed, tolerance, ccmin, nchmin)
         end
         if !isempty(detections)
             put!(detections_chnl, hcat(detections, DataFrame(detectionsdata)))
