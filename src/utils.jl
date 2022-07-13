@@ -65,10 +65,10 @@ dict2array(d, keys) = [d[key] for key in keys]
 
 uploaddata(data, iscudafunctional=false) = iscudafunctional ? CuArray.(data) : data
 
-function process!(detections_chnl, peaks_chnl, data, sensors, delay, freq, speed, tolerance, ccmin, nchmin)
+function process!(detections_chnl, peaks_chnl, data, sensors, head_len, freq, speed, tolerance, ccmin, nchmin)
     for (template, peaks, heights) in peaks_chnl
         detections = DataFrame()
-        detections.peak_sample = peaks .+ delay
+        detections.peak_sample = peaks .+ head_len
         detections.peak_height = heights
         detections.template .= template.index
         detectionsdata = Vector{TemplateMatchEventData}(undef, length(peaks))
@@ -78,7 +78,7 @@ function process!(detections_chnl, peaks_chnl, data, sensors, delay, freq, speed
                                                  sensors,
                                                  peaks[k],
                                                  freq,
-                                                 delay,
+                                                 head_len,
                                                  speed,
                                                  tolerance,
                                                  ccmin, 
