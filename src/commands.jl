@@ -159,5 +159,5 @@ Match templates.
             chnl, 
             peaks_chnl, data, sensors, starttime_us,
             head_len, freq_MHz, speed, tolerance, ccmin, nchmin))
-    savecatalogue(detections_chnl, outputpath)
+    savecatalogue(collect(detections_chnl), outputpath)
 end
