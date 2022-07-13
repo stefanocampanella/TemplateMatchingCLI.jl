@@ -44,7 +44,7 @@ function processdetection(data, template, sensors, starttime, peak, freq, head_l
         crosscorrelation = missing
         relative_magnitude = missing
     end
-    (; north, east, up, origin_time=starttime + Microsecond(rount(Int, timedelay)), 
+    (; north, east, up, origin_time=starttime + Microsecond(round(Int, timedelay)), 
     magnitude=template.magnitude + relative_magnitude, crosscorrelation, channels, multilateration_residual)
 end
 
