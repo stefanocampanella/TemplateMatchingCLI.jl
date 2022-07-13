@@ -1,7 +1,7 @@
 function detect!(peaks_chnl, data, templates, tolerance, threshold, rel_distance, npeaksmax; iscudafunctional=false)
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr), showspeed=true)
     for template in templates
-        if !any(map(ismissing, r))
+        if !any(map(ismissing, template))
             signal = computesignal(data, template, tolerance; iscudafunctional)
             distance = rel_distance * maximum(length, values(template.data))
             peaks, heights = TemplateMatching.findpeaks(signal, threshold, distance)
