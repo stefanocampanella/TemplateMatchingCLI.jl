@@ -131,7 +131,8 @@ Match templates.
                               tolerance::Int=8, threshold::Int=12, distance::Int=2, 
                               ccmin::Float64=0.5, nchmin::Int=4, npeaksmax::Int=1024)
     @info "Reading data from $(realpath(datapath))"
-    data, freq = load(datapath, "data", "freq")
+    data, starttime, freq = load(datapath, "data", "starttime", "freq")
+    starttime_us = DateTimeMicrosecond(starttime)
     @info "Reading sensors coordinates from $(realpath(sensorspath))"
     sensors = readsensorscoordinates(sensorspath)
     @info "Reading templates from $(realpath(templatespath))"
@@ -155,7 +156,7 @@ Match templates.
     detections_chnl = Channel{DataFrame}(
         chnl -> process!(
             chnl, 
-            peaks_chnl, data, sensors, 
+            peaks_chnl, data, sensors, starttime_us,
             head_len, freq, speed, tolerance, ccmin, nchmin))
     store(collect(detections_chnl), outputpath)
 end
