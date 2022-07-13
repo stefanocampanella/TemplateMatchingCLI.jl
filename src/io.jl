@@ -54,7 +54,7 @@ function readsensorscoordinates(filepath; header=[:north, :east, :up])
     Dict(r.channel => Vector(r[[:north, :east, :up]]) for r in eachrow(coordinates))
 end
 
-function store(detections, outputpath)
+function savecatalogue(detections, outputpath)
     if isempty(detections)
         @info "No match found."
     else
