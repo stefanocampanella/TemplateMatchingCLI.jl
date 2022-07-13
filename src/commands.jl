@@ -154,7 +154,7 @@ match templates.
         iscudafunctional = false
     end
     templates = Tables.namedtupleiterator(catalogue)
-    peaks_chnl = Channel{Tuple{eltype(templates), Vector{Int}, Vector{valtype(data)}}}(
+    peaks_chnl = Channel{Tuple{eltype(templates), Vector{Int}, valtype(data)}}(
         chnl -> detect!(
             chnl, 
             data, templates, 
