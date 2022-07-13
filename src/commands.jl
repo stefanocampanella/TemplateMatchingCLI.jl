@@ -53,7 +53,7 @@ all in the same directory `inputdirpath`.
         starttime = DateTime(datetime, dateformat"yyyy-mm-dd_HH-MM-SS")
         resampledfreq = freq // resamplefactor
         endtime = starttime + Second(round(Int, minimum(length, values(data)) / resampledfreq))
-        jldsave(joinpath(outputpath, "$(datetime)_$experiment.jld2"); data, starttime, endtime, freq=resampledfreq)
+        jldsave(outputpath; data, starttime, endtime, freq=resampledfreq)
     end
 end
 
@@ -65,7 +65,6 @@ Cut templates.
 - `datadirpath`: path of the directory of JLD2 data files.
 - `sensorsxyzpath`: path of the CSV containing sensors coordinates.
 - `cataloguepath`: path of the CSV catalogue of templates.
-- `experiment`: name of the experiment of which load the data.
 - `outputpath`: path of the output file.
 
 # Options
@@ -74,7 +73,7 @@ Cut templates.
 - `-s, --speed`: P-wave speed in cm/us.
 - `-w, --window`: template window in samples.
 """
-@cast function maketemplates(datadirpath::AbstractString, experiment::AbstractString, sensorsxyzpath::AbstractString, 
+@cast function maketemplates(datadirpath::AbstractString, sensorsxyzpath::AbstractString, 
                              cataloguepath::AbstractString, outputpath::AbstractString; 
                              precision::Int=32, speed::Float64=0.67, window::Tuple{Int, Int}=(50, 250))
     @info "Reading catalogue..."
@@ -82,39 +81,34 @@ Cut templates.
     @info "Reading sensors coordinates..."
     sensorscoordinates = readsensorscoordinates(sensorsxyzpath)
     @info "Reading data and cutting templates..."
-    re = Regex("\\Q$experiment\\E.jld2\$")
     eltype = fpsize2fptype(precision)
     templates_data = Vector{MaybeTemplateData{eltype}}(missing, nrow(catalogue))
     templates_offsets = Vector{MaybeTemplateOffsets}(missing, nrow(catalogue))
     datapaths = collect(readdir(datadirpath, join=true))
     progressbar = Progress(length(datapaths); output=stderr, enabled=!is_logging(stderr))
     Threads.@threads for datapath in datapaths
-        if !isnothing(match(re, datapath))
-            dataset = load(datapath)
-            data = dataset["data"]
-            starttime_us = DateTimeMicrosecond(dataset["starttime"])
-            endtime_us = DateTimeMicrosecond(dataset["endtime"])
-            freq_MHz = round(Int, 1e-6 * dataset["freq"])
-            templates_within_data = filter(r -> starttime_us <= r.datetime < endtime_us, catalogue)
-            for template in eachrow(templates_within_data)
-                template_data, offsets = cuttemplate(data,
-                                                     sensorscoordinates,
-                                                     template,
-                                                     starttime_us, freq_MHz, speed, window, eltype)
-                templates_data[template.index] = template_data
-                templates_offsets[template.index] = offsets
-            end
+        data, starttime, endtime, freq = load(datapath, "data", "starttime", "endtime", "freq")
+        starttime_us = DateTimeMicrosecond(starttime)
+        endtime_us = DateTimeMicrosecond(endtime)
+        freq_MHz = round(Int, 1e-6 * freq)
+        templates_within_data = filter(r -> starttime_us <= r.datetime < endtime_us, catalogue)
+        for template in eachrow(templates_within_data)
+            template_data, offsets = cuttemplate(
+                data, sensorscoordinates, template,
+                starttime_us, freq_MHz, speed, window, eltype)
+            templates_data[template.index] = template_data
+            templates_offsets[template.index] = offsets
         end
         next!(progressbar)
     end
     @info "Saving templates"
     catalogue.data = templates_data
     catalogue.offsets = templates_offsets
-    jldsave(joinpath(outputpath, "$experiment.jld2"); catalogue, speed, window)
+    jldsave(outputpath; catalogue, speed, window)
 end
 
 """
-match templates.
+Match templates.
 
 # Arguments
 
@@ -134,9 +128,8 @@ match templates.
 """
 @cast function matchtemplates(datapath::AbstractString, templatespath::AbstractString, 
                               sensorspath::AbstractString, outputpath::AbstractString; 
-                              threshold::Int=12, distance::Int=2, 
-                              ccmin::Float64=0.5, tolerance::Int=8, nchmin::Int=4,
-                              npeaksmax::Int=1024)
+                              tolerance::Int=8, threshold::Int=12, distance::Int=2, 
+                              ccmin::Float64=0.5, nchmin::Int=4, npeaksmax::Int=1024)
     @info "Reading data from $(realpath(datapath))"
     data, freq = load(datapath, "data", "freq")
     @info "Reading sensors coordinates from $(realpath(sensorspath))"
@@ -144,7 +137,6 @@ match templates.
     @info "Reading templates from $(realpath(templatespath))"
     catalogue, speed, window = load(templatespath, "catalogue", "speed", "window")
     head_len, _ = window
-    filter!(r -> !any(map(ismissing, r)), catalogue)
     @info "Computing cross-correlations and processing matches"
     if CUDA.functional()
         @info "GPU acceleration available" CUDA.version()

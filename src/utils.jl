@@ -35,11 +35,13 @@ intersectkeys(dicts...) = Base.splat(collect ∘ intersect)(map(keys, dicts))
 function detect!(peaks_chnl, data, templates, tolerance, threshold, rel_distance, npeaksmax; iscudafunctional=false)
     progressbar = Progress(length(templates); output=stderr, enabled=!is_logging(stderr), showspeed=true)
     for template in templates
-        signal = computesignal(data, template, tolerance; iscudafunctional)
-        distance = rel_distance * maximum(length, values(template.data))
-        peaks, heights = TemplateMatching.findpeaks(signal, threshold, distance)
-        if !(isempty(peaks) || length(peaks) > npeaksmax)
-            put!(peaks_chnl, (template, peaks, heights))
+        if !any(map(ismissing, r))
+            signal = computesignal(data, template, tolerance; iscudafunctional)
+            distance = rel_distance * maximum(length, values(template.data))
+            peaks, heights = TemplateMatching.findpeaks(signal, threshold, distance)
+            if !(isempty(peaks) || length(peaks) > npeaksmax)
+                put!(peaks_chnl, (template, peaks, heights))
+            end
         end
         next!(progressbar)
     end
