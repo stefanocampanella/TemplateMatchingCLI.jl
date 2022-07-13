@@ -19,7 +19,9 @@ using OffsetArrays
 
 include("types.jl")
 include("datetimeus.jl")
-include("readers.jl")
+include("io.jl")
+include("detect.jl")
+include("process.jl")
 include("utils.jl")
 include("commands.jl")
 

@@ -4,7 +4,6 @@ function readlabfile(filepath, nb, eltype::Type{T}) where T <: AbstractFloat
     data[1:2:end], data[2:2:end]
 end
 
-
 function readlabdir(dirpath, datetime, experiment, exclude_list, nb, eltype::Type{T}) where T <: AbstractFloat
     re = Regex("^\\Q$datetime\\E_\\Q$experiment\\E_ch(?P<fst_channel>[0-9]+)&(?P<snd_channel>[0-9]+)\\.bin")
     data = Stream{eltype}()
@@ -35,7 +34,6 @@ function readlabdir(dirpath, datetime, experiment, exclude_list, nb, eltype::Typ
     data
 end
 
-
 function readcatalogue(filepath, columns = [:Year, :Month, :Day, :Hour, :Minute, :Second, :North, :East, :Up, :magnitude])
     df = CSV.read(filepath, DataFrame, select=columns)
     sec = floor.(Int, df.Second)
@@ -50,10 +48,19 @@ function readcatalogue(filepath, columns = [:Year, :Month, :Day, :Hour, :Minute,
     catalogue
 end
 
-
 function readsensorscoordinates(filepath; header=[:north, :east, :up])
     coordinates = CSV.read(filepath, DataFrame; header)
     coordinates.channel = 0:(nrow(coordinates) - 1)
     Dict(r.channel => Vector(r[[:north, :east, :up]]) for r in eachrow(coordinates))
 end
 
+function store(detections, outputpath)
+    if isempty(detections)
+        @info "No match found."
+    else
+        augmented_catalogue = reduce(vcat, detections)
+        @info "Found $(nrow(augmented_catalogue)) matches."
+        @info "Saving augmented catalogue at $outputpath." augmented_catalogue
+        jldsave(outputpath; augmented_catalogue)
+    end
+end
