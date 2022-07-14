@@ -7,6 +7,7 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --gres=gpu:1
 #SBATCH --output=/m100_scratch/userexternal/scampane/Acoustic-Emissions/logs/%A_%a.log
+#SBATCH --constraint=gpureport
 #SBATCH	--requeue 
 #SBATCH --verbose
 
