@@ -10,16 +10,18 @@
 #SBATCH	--requeue 
 #SBATCH --verbose
 
+module load spack && module load julia
+
+export JULIA_CUDA_USE_BINARYBUILDER=false
+export JULIA_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export PATH=$PATH:~/.julia/bin
+
 DATA_ROOT=$CINECA_SCRATCH/Acoustic-Emissions
 DATA_DIR=$DATA_ROOT/data
 OUTPUT_DIR=$DATA_ROOT/outputs
 TEMPLATES_FILE=$DATA_ROOT/gab6.jld2
 SENSORS_FILE=$DATA_ROOT/passive-xyz.csv
 OUTPUT_DIR=$DATA_ROOT/outputs
-
-export JULIA_CUDA_USE_BINARYBUILDER=false
-export JULIA_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export PATH=$PATH:~/.julia/bin
 
 mapfile -t DATA_FILES < <(find "$DATA_DIR" -type f -name "*_gab6.jld2" | sort -u)
 DATA=${DATA_FILES[SLURM_ARRAY_TASK_ID]}
