@@ -5,20 +5,20 @@ all in the same directory `inputdirpath`.
 
 # Arguments
 
-- `inputdirpath`: directory of the binary files.
-- `datetime`: datetime of data to be read.
-- `experiment`: experiment identifier of data to be read.
-- `outputdirpath`: path of the output directory.
+- `inputdirpath`: directory of the binary files
+- `datetime`: datetime of data to be read
+- `experiment`: experiment identifier of data to be read
+- `outputdirpath`: path of the output directory
 
 # Options
 
-- `-p, --precision`: FP precision to use for computation and storage.
-- `-f, --freq`: original sampling frequency in Hz.
-- `-l, --lopassfreq`: lower frequency in bandpass filter in Hz.
-- `-h, --hipassfreq`: higher frequency in bandpass filter in Hz.
-- `-n, --numpoles`: number of poles in Butterworth filter.
-- `-r, --resamplefactor`: resampling factor.
-- `-e, --exclude`: channels to exclude.
+- `-p, --precision`: FP precision to use for computation and storage
+- `-f, --freq`: original sampling frequency in Hz
+- `-l, --lopassfreq`: lower frequency in bandpass filter in Hz
+- `-h, --hipassfreq`: higher frequency in bandpass filter in Hz
+- `-n, --numpoles`: number of poles in Butterworth filter
+- `-r, --resamplefactor`: resampling factor
+- `-e, --exclude`: channels to exclude
 """
 @cast function preprocess(dirpath::AbstractString, datetime::AbstractString, 
                           experiment::AbstractString, outputpath::AbstractString; 
@@ -62,16 +62,16 @@ Cut templates.
 
 # Arguments
 
-- `datadirpath`: path of the directory of JLD2 data files.
-- `sensorsxyzpath`: path of the CSV containing sensors coordinates in cm.
-- `cataloguepath`: path of the CSV catalogue of templates.
-- `outputpath`: path of the output file.
+- `datadirpath`: path of the directory of JLD2 data files
+- `sensorsxyzpath`: path of the CSV containing sensors coordinates in cm
+- `cataloguepath`: path of the CSV catalogue of templates
+- `outputpath`: path of the output file
 
 # Options
 
-- `-p, --precision`: FP size in bits,  precision to use for template storage.
-- `-s, --speed`: P-wave speed in cm/us.
-- `-w, --window`: template window in samples.
+- `-p, --precision`: FP size in bits,  precision to use for template storage
+- `-s, --speed`: P-wave speed in cm/us
+- `-w, --window`: template window in samples
 """
 @cast function maketemplates(datadirpath::AbstractString, sensorsxyzpath::AbstractString, 
                              cataloguepath::AbstractString, outputpath::AbstractString; 
@@ -112,18 +112,18 @@ Match templates.
 
 # Arguments
 
-- `datapath`: path of continuous data.
-- `templatespath`: path of the directory of JLD2 data files.
-- `sensorsxyzpath`: path of the CSV containing sensors coordinates in cm.
-- `outputpath`: path of the output file.
+- `datapath`: path of continuous data
+- `templatespath`: path of the directory of JLD2 data files
+- `sensorsxyzpath`: path of the CSV containing sensors coordinates in cm
+- `outputpath`: path of the output file
 
 # Options
 
-- `--tolerance`: sample tolerance in stacking.
-- `--threshold`: height threshold.
-- `--distance`: minimum distance between peaks.
-- `--ccmin`: correlation threshold.
-- `--nchmin`: minimum number of channels.
+- `--tolerance`: sample tolerance in stacking
+- `--threshold`: height threshold
+- `--distance`: minimum distance between peaks
+- `--ccmin`: correlation threshold
+- `--nchmin`: minimum number of channels
 - `--npeaksmax`: maximum number of detections to consider valid a template
 """
 @cast function matchtemplates(datapath::AbstractString, templatespath::AbstractString, 
