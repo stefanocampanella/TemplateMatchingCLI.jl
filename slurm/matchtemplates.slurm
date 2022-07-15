@@ -8,7 +8,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --output=/m100_scratch/userexternal/scampane/Acoustic-Emissions/logs/%A_%a.log
 #SBATCH --constraint=gpureport
-#SBATCH	--requeue 
+#SBATCH	--requeue
+#SBATCH --mail-type=ALL
 #SBATCH --verbose
 
 module load spack && module load julia
@@ -29,6 +30,6 @@ DATA=${DATA_FILES[SLURM_ARRAY_TASK_ID]}
 
 mkdir -p "$OUTPUT_DIR"
 DATA_NAME=$(basename "${DATA%_gab6.jld2}")
-templatematchingcli matchtemplates "$DATA" "$TEMPLATES_FILE" "$SENSORS_FILE" "$OUTPUT_DIR/$DATA_NAME.jld2"
+srun templatematchingcli matchtemplates "$DATA" "$TEMPLATES_FILE" "$SENSORS_FILE" "$OUTPUT_DIR/$DATA_NAME.jld2" || scontrol requeue $SLURM_JOB_ID
 
 exit
